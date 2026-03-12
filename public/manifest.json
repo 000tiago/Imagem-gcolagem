@@ -1,0 +1,21 @@
+{
+  "name": "Image Collage Creator",
+  "short_name": "Collage",
+  "description": "High-performance image collage engine using Canvas API.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "https://picsum.photos/192/192",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://picsum.photos/512/512",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

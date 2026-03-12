@@ -1,0 +1,5 @@
+{
+  "name": "Image Collage Creator",
+  "description": "High-performance image collage engine using Canvas API. Features 15+ artistic layouts (Voronoi, 3D Wall, Fractal, etc.), deterministic seeded randomness, focal point blur, and high-res export. Designed for seamless integration as a visual tool for sorting and organization apps like SortFlow.",
+  "requestFramePermissions": []
+}
