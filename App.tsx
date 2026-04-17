@@ -10,12 +10,14 @@
 // e deve ser mantida.
 
 import React, { useState, useCallback, useMemo, useEffect, createContext, useContext, useRef } from 'react';
-import { Sidebar } from './components/Sidebar';
+import { LeftSidebar } from './components/LeftSidebar';
+import { RightSidebar } from './components/RightSidebar';
+import { BottomBar } from './components/BottomBar';
 import { CanvasArea, CanvasAreaHandle } from './components/CanvasArea';
 import { Header } from './components/Header';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import type { Settings, ImageFile, Keyframe } from './types';
-import { LayoutType } from './types';
+import { LayoutType, CardStyle, BackgroundStyle } from './types';
 import { DEFAULT_SETTINGS } from './constants';
 import { generateEmojiImages } from './utils/emojiUtils';
 import { convertToWebP, extractPaletteFromImages } from './utils/imageUtils';
@@ -53,9 +55,6 @@ const translations = {
     chaosVariationHint: 'Adds random position and rotation offsets to structured layouts for a more organic feel.',
     globalRotation: 'Global Rotation',
     globalRotationHint: 'Applies a consistent rotation angle to all images in the collage.',
-    pngSettings: 'PNG Backgrounds',
-    addPngBg: 'Add pastel background',
-    randomizePngBg: 'Randomize Colors',
     // Sidebar Tabs
     tabLayout: 'Layout',
     tabStyle: 'Style',
@@ -74,6 +73,15 @@ const translations = {
     layoutJournal: 'Journal',
     layoutCircular: 'Circular',
     layoutOrbital: '3D Orbital',
+    layoutShowcase: 'Hero Showcase',
+    layoutMockupWall: 'Mockup Wall (Grid)',
+    layoutIsometricGrid: 'Isometric Grid',
+    layoutStaggeredRows: 'Staggered Rows',
+    layoutFloatingCloud: 'Floating Cloud',
+    layoutPerspectiveGrid: 'Perspective Wall',
+    layoutCoverFlow: 'Cover Flow',
+    layoutCarousel: 'Linear Carousel',
+    layoutFloating: '3D Floating',
     // Aspect Ratios
     aspect16_9: 'Wallpaper (16:9)',
     aspect1_1: 'Square (1:1)',
@@ -83,6 +91,13 @@ const translations = {
     fitCover: 'Cover (Fill & Crop)',
     fitContain: 'Contain (Fit Inside)',
     // Controls
+    deviceType: 'Device Shape',
+    deviceTypeAuto: 'Auto (Smart)',
+    deviceTypeOriginal: 'Original Photo (No Crop)',
+    deviceTypePhone: 'Phone (9:19.5)',
+    deviceTypeLaptop: 'Laptop (16:10)',
+    mockupSpacing: 'Mockup Spacing',
+    mockupAngle: 'Mockup Angle',
     layout: 'Layout',
     accordionLayoutControls: 'Layout Controls',
     gridControls: 'Grid Controls',
@@ -191,11 +206,16 @@ const translations = {
     cardStyle: 'Card Style',
     cardStyleDefault: 'Solid / Pastel',
     cardStyleGlass: 'Glassmorphism',
+    cardStyleDeviceMockup: 'Device Mockup',
     enableBorder: 'Enable Border',
     borderColor: 'Border Color',
     borderWidth: 'Border Width',
     internalPadding: 'Internal Padding',
     internalPaddingHint: 'Space between the image and the edge of its frame.',
+    borderlessMode: 'Borderless Mode (Image Only)',
+    borderlessModeHint: 'Removes all borders and padding, showing only the raw images.',
+    proportionalFit: 'Proportional Fit',
+    proportionalFitHint: 'Adjusts images of varying dimensions to fit proportionally without cropping.',
     background: 'Background',
     suggestedPalette: 'Suggested Palette',
     paletteHint: 'Click a color to set it as your solid background.',
@@ -226,6 +246,20 @@ const translations = {
     processing: 'Processing Images...',
     exportingVideo: 'Exporting Video...',
     hintFocus: 'Click images to toggle focus. Unfocused images will be blurred.',
+    dropImagesHere: 'Drop images here',
+    addPhotosToCollage: 'Add photos to your collage',
+    // Section Descriptions
+    mockupSectionTitle: 'Professional Mockups',
+    mockupSectionDesc: 'Perfect for portfolios. Your photos inside phones and laptops.',
+    creativeSectionTitle: 'Creative Layouts',
+    creativeSectionDesc: 'Artistic and organic shapes for a unique look.',
+    classicSectionTitle: 'Classic Layouts',
+    classicSectionDesc: 'Traditional grids and mosaics, clean and organized.',
+    // Unified Sidebar Sections
+    sectionComposition: 'Composition & Structure',
+    sectionImageStyle: 'Image Visual & Style',
+    sectionEnvironment: 'Environment & Finish',
+    sectionPhotoManagement: 'Photo Management',
   },
   pt: {
     // Header
@@ -256,9 +290,6 @@ const translations = {
     chaosVariationHint: 'Adiciona leves desvios de posição e rotação para um resultado menos rígido.',
     globalRotation: 'Rotação Global',
     globalRotationHint: 'Aplica um ângulo de rotação consistente a todas as imagens da colagem.',
-    pngSettings: 'Fundos para PNG',
-    addPngBg: 'Adicionar fundo pastel',
-    randomizePngBg: 'Gerar Novas Cores',
     // Sidebar Tabs
     tabLayout: 'Layout',
     tabStyle: 'Estilo',
@@ -277,6 +308,15 @@ const translations = {
     layoutJournal: 'Estilo Diário',
     layoutCircular: 'Circular',
     layoutOrbital: 'Esfera Orbital 3D',
+    layoutShowcase: 'Destaque (Hero)',
+    layoutMockupWall: 'Parede de Mockups (Grade)',
+    layoutIsometricGrid: 'Grade Isométrica',
+    layoutStaggeredRows: 'Linhas Intercaladas',
+    layoutFloatingCloud: 'Nuvem Flutuante',
+    layoutPerspectiveGrid: 'Parede em Perspectiva',
+    layoutCoverFlow: 'Carrossel (Cover Flow)',
+    layoutCarousel: 'Carrossel Linear',
+    layoutFloating: 'Flutuante 3D',
     // Aspect Ratios
     aspect16_9: 'Wallpaper (16:9)',
     aspect1_1: 'Quadrado (1:1)',
@@ -286,6 +326,13 @@ const translations = {
     fitCover: 'Preencher (Cortar)',
     fitContain: 'Conter (Ajustar)',
     // Controls
+    deviceType: 'Formato do Aparelho',
+    deviceTypeAuto: 'Automático (Inteligente)',
+    deviceTypeOriginal: 'Foto Original (Sem Corte)',
+    deviceTypePhone: 'Celular (9:19.5)',
+    deviceTypeLaptop: 'Notebook (16:10)',
+    mockupSpacing: 'Espaçamento / Abertura',
+    mockupAngle: 'Ângulo / Rotação',
     layout: 'Estilo de Layout',
     accordionLayoutControls: 'Controles do Layout',
     gridControls: 'Ajustes da Grade',
@@ -394,11 +441,16 @@ const translations = {
     cardStyle: 'Estilo do Cartão',
     cardStyleDefault: 'Sólido / Pastel',
     cardStyleGlass: 'Vidro Fosco',
+    cardStyleDeviceMockup: 'Mockup de Dispositivo',
     enableBorder: 'Ativar Borda',
     borderColor: 'Cor da Borda',
     borderWidth: 'Largura da Borda',
     internalPadding: 'Espaçamento Interno',
     internalPaddingHint: 'Espaço entre a imagem e a borda da sua moldura.',
+    borderlessMode: 'Modo Sem Bordas (Apenas Imagem)',
+    borderlessModeHint: 'Remove todas as bordas e espaçamentos, exibindo apenas as imagens originais.',
+    proportionalFit: 'Ajuste Proporcional',
+    proportionalFitHint: 'Ajusta imagens de várias dimensões para caberem proporcionalmente sem cortes.',
     background: 'Plano de Fundo',
     suggestedPalette: 'Paleta Sugerida',
     paletteHint: 'Clique em uma cor para usá-la como fundo sólido.',
@@ -429,6 +481,20 @@ const translations = {
     processing: 'Processando imagens...',
     exportingVideo: 'Exportando vídeo...',
     hintFocus: 'Clique nas imagens para focar/desfocar. Imagens sem foco serão desfocadas.',
+    dropImagesHere: 'Solte as imagens aqui',
+    addPhotosToCollage: 'Adicione fotos à sua colagem',
+    // Section Descriptions
+    mockupSectionTitle: 'Mockups Profissionais',
+    mockupSectionDesc: 'Ideal para portfólios e redes sociais. Suas fotos dentro de celulares e notebooks.',
+    creativeSectionTitle: 'Layouts Criativos',
+    creativeSectionDesc: 'Formas artísticas e orgânicas para um visual único.',
+    classicSectionTitle: 'Layouts Clássicos',
+    classicSectionDesc: 'Grades e mosaicos tradicionais, limpos e organizados.',
+    // Unified Sidebar Sections
+    sectionComposition: 'Composição & Estrutura',
+    sectionImageStyle: 'Visual da Imagem & Estilo',
+    sectionEnvironment: 'Cenário & Toque Final',
+    sectionPhotoManagement: 'Gestão de Fotos',
   }
 };
 
@@ -465,6 +531,7 @@ export const useTranslation = () => useContext(LanguageContext);
 
 
 const App: React.FC = () => {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [imageFiles, setImageFiles] = useState<ImageFile[]>([]);
   const [demoImages, setDemoImages] = useState<ImageFile[]>([]);
@@ -483,6 +550,8 @@ const App: React.FC = () => {
   // State for Undo/Redo
   const [history, setHistory] = useState<Settings[]>([DEFAULT_SETTINGS]);
   const [historyIndex, setHistoryIndex] = useState<number>(0);
+  
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   useEffect(() => {
     generateEmojiImages(50).then(emojis => {
@@ -530,38 +599,112 @@ const App: React.FC = () => {
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
 
-  const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      setIsLoading(true);
-      const files: File[] = Array.from(event.target.files);
-      const successfulConversions: ImageFile[] = [];
+  const processFiles = useCallback(async (files: File[]) => {
+    setIsLoading(true);
+    const successfulConversions: ImageFile[] = [];
 
-      for (const file of files) {
-        try {
-          const converted = await convertToWebP(file);
-          successfulConversions.push({
-            id: `${file.name}-${Date.now()}`,
-            file: file,
-            previewUrl: converted.previewUrl,
-            width: converted.width,
-            height: converted.height,
-          });
-        } catch (error) {
-          console.error(`Failed to convert ${file.name} to WebP:`, error);
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      try {
+        const converted = await convertToWebP(file);
+        successfulConversions.push({
+          id: `${file.name}-${Date.now()}-${Math.random()}`,
+          file: file,
+          previewUrl: converted.previewUrl,
+          width: converted.width,
+          height: converted.height,
+        });
+      } catch (error) {
+        console.error(`Failed to convert ${file.name} to WebP:`, error);
+      }
+    }
+    
+    const newImageFiles = [...imageFiles, ...successfulConversions];
+    setImageFiles(newImageFiles);
+
+    if (newImageFiles.length > 0) {
+      const palette = await extractPaletteFromImages(newImageFiles.map(f => f.previewUrl));
+      setColorPalette(palette);
+
+      // AUTO-IMPROVEMENT: If this is the first upload, set a professional mockup layout
+      if (imageFiles.length === 0 && successfulConversions.length > 0) {
+        setSettings(prev => ({
+          ...prev,
+          layout: LayoutType.Showcase,
+          cardStyle: CardStyle.DeviceMockup,
+          borderColor: palette[0] || '#1a1a1a', // Use dominant color for device casing
+          backgroundStyle: BackgroundStyle.AuroraLights, // Set a nice background
+          shadowBlur: 40,
+          spacing: 10,
+        }));
+      } else if (palette.length > 0 && settings.cardStyle === CardStyle.DeviceMockup) {
+        // Update border color to match new palette if already in mockup mode
+        setSettings(prev => ({
+          ...prev,
+          borderColor: palette[0]
+        }));
+      }
+    }
+
+    setIsLoading(false);
+  }, [imageFiles, settings.cardStyle]);
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // Don't intercept paste if user is in an input or textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      const files: File[] = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) files.push(file);
         }
       }
-      
-      const newImageFiles = [...imageFiles, ...successfulConversions];
-      setImageFiles(newImageFiles);
 
-      if (newImageFiles.length > 0) {
-        const palette = await extractPaletteFromImages(newImageFiles.map(f => f.previewUrl));
-        setColorPalette(palette);
+      if (files.length > 0) {
+        processFiles(files);
       }
+    };
 
-      setIsLoading(false);
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [processFiles]);
+
+  const handleFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      await processFiles(Array.from(event.target.files));
     }
-  }, [imageFiles]);
+  }, [processFiles]);
+
+  const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files) as File[];
+      await processFiles(files);
+    }
+  }, [processFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  }, []);
   
   const handleUseDemoImages = useCallback(() => {
     setIsLoading(true);
@@ -571,11 +714,6 @@ const App: React.FC = () => {
         setIsLoading(false);
     });
   }, [demoImages]);
-
-
-  const handleRegeneratePngBgs = useCallback(() => {
-      handleSettingsChange(s => ({...s, bgSeed: Math.random() }));
-  }, [handleSettingsChange]);
 
 
   const handleShapeFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -615,6 +753,17 @@ const App: React.FC = () => {
     setImageFiles(newOrder);
   }, []);
 
+  const handleRemoveImage = useCallback((id: string) => {
+    setImageFiles(currentFiles => {
+      const fileToRemove = currentFiles.find(f => f.id === id);
+      if (fileToRemove) {
+        URL.revokeObjectURL(fileToRemove.previewUrl);
+      }
+      return currentFiles.filter(f => f.id !== id);
+    });
+    setFocusedImageIds(currentIds => currentIds.filter(fid => fid !== id));
+  }, []);
+
   const loadedImages = useMemo(() => {
     return imageFiles.filter(img => img.width && img.height);
   }, [imageFiles]);
@@ -622,10 +771,6 @@ const App: React.FC = () => {
   const imagesToDisplay = useMemo(() => {
     return loadedImages.length > 0 ? loadedImages : demoImages;
   }, [loadedImages, demoImages]);
-
-  const hasPng = useMemo(() => {
-    return imagesToDisplay.some(f => f.file.type === 'image/png');
-  }, [imagesToDisplay]);
 
   const handleRandomFocus = useCallback(() => {
     if (imagesToDisplay.length === 0) return;
@@ -643,21 +788,28 @@ const App: React.FC = () => {
     canvasAreaRef.current?.exportImage();
   };
 
-  const handleStartRecording = useCallback(() => {
-      setInitialStateBeforeRecord(settings);
-      setKeyframes([{ timestamp: Date.now(), settings }]);
-      setIsRecording(true);
-  }, [settings]);
-
-  const handleStopRecording = useCallback(async () => {
-      setIsRecording(false);
+  const handleExportAnimation = useCallback(async () => {
       setIsExporting(true);
-
       try {
-          const finalKeyframes = [...keyframes, { timestamp: Date.now(), settings }];
-          const initialStateForExport = initialStateBeforeRecord ?? settings;
+          // Create a synthetic initial state for the "Retrospective" effect
+          const initialStateForExport: Settings = {
+              ...settings,
+              spacing: Math.min(100, settings.spacing + 50), // Start more scattered
+              mockupAngle: settings.mockupAngle ? settings.mockupAngle - 45 : -45,
+              globalRotation: settings.globalRotation ? settings.globalRotation + 180 : 180, // Spin in
+              organicVariation: 1, // High variation
+              zoom: Math.max(0.1, settings.zoom - 0.4), // Zoomed out
+              globalOffsetX: settings.globalOffsetX - 500, // Slide in
+          };
 
-          const videoBlob = await exportVideo(finalKeyframes, initialStateForExport, imagesToDisplay, settings);
+          // We need at least two keyframes. The time difference determines the speed in exportVideo.
+          const syntheticKeyframes = [
+              { timestamp: 0, settings: initialStateForExport },
+              { timestamp: 3000, settings } // 3 seconds animation
+          ];
+
+          const canvasSize = canvasAreaRef.current?.getCanvasSize() || { width: 800, height: 800 };
+          const videoBlob = await exportVideo(syntheticKeyframes, initialStateForExport, imagesToDisplay, settings, canvasSize);
           const url = URL.createObjectURL(videoBlob);
           const a = document.createElement('a');
           a.href = url;
@@ -670,64 +822,129 @@ const App: React.FC = () => {
           console.error("Video export failed:", error);
       } finally {
           setIsExporting(false);
-          if (initialStateBeforeRecord) {
-              setSettings(initialStateBeforeRecord);
-          }
-          setKeyframes([]);
-          setInitialStateBeforeRecord(null);
       }
-  }, [keyframes, settings, initialStateBeforeRecord, imagesToDisplay]);
+  }, [settings, imagesToDisplay]);
 
+  // We don't need handleStopRecording anymore, but we can keep it empty or remove it.
+  const handleStopRecording = useCallback(() => {}, []);
+
+
+  const handleAddTextOverlay = useCallback(() => {
+    const newOverlay = {
+      id: Math.random().toString(36).substr(2, 9),
+      text: 'New Text',
+      x: 0.5,
+      y: 0.5,
+      fontSize: 40,
+      fontFamily: 'Inter',
+      color: '#ffffff',
+      rotation: 0,
+      opacity: 1,
+      fontWeight: 'bold',
+    };
+    handleSettingsChange(s => ({
+      ...s,
+      textOverlays: [...s.textOverlays, newOverlay],
+    }));
+  }, [handleSettingsChange]);
+
+  const handleUpdateTextOverlay = useCallback((id: string, updates: any) => {
+    handleSettingsChange(s => ({
+      ...s,
+      textOverlays: s.textOverlays.map(o => o.id === id ? { ...o, ...updates } : o),
+    }));
+  }, [handleSettingsChange]);
+
+  const handleRemoveTextOverlay = useCallback((id: string) => {
+    handleSettingsChange(s => ({
+      ...s,
+      textOverlays: s.textOverlays.filter(o => o.id !== id),
+    }));
+  }, [handleSettingsChange]);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-900 overflow-hidden">
+    <div 
+      className="flex flex-col h-screen bg-gray-900 overflow-hidden relative"
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-indigo-500/20 backdrop-blur-sm border-4 border-indigo-500 border-dashed m-4 rounded-none pointer-events-none">
+          <div className="bg-gray-900/80 px-8 py-6 rounded-none shadow-2xl flex flex-col items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-indigo-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            <h2 className="text-2xl font-bold text-white">{t('dropImagesHere' as TranslationKey)}</h2>
+            <p className="text-indigo-200 mt-2">{t('addPhotosToCollage' as TranslationKey)}</p>
+          </div>
+        </div>
+      )}
       <Header 
         settings={settings}
         onSettingsChange={handleSettingsChange}
         onExport={handleExport}
         isRecording={isRecording}
         isExporting={isExporting || isLoading}
-        onStartRecording={handleStartRecording}
+        onStartRecording={handleExportAnimation}
         onStopRecording={handleStopRecording}
         hasImages={imagesToDisplay.length > 0}
+        palette={colorPalette}
       />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
+        <LeftSidebar 
           settings={settings}
           onSettingsChange={handleSettingsChange}
-          onFileChange={handleFileChange}
-          onShapeFileChange={handleShapeFileChange}
-          onBgImageChange={handleBgImageChange}
-          onClear={handleClearImages}
-          onShuffle={handleShuffle}
-          imageCount={imageFiles.length}
+        />
+        
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <main className="flex-1 flex items-center justify-center p-4 bg-gray-800/50 overflow-hidden relative">
+            {imagesToDisplay.length === 0 && imageFiles.length === 0 ? (
+              <WelcomeScreen onFileChange={handleFileChange} onUseDemoImages={handleUseDemoImages} isLoading={isLoading} />
+            ) : (
+              <CanvasArea 
+                ref={canvasAreaRef}
+                settings={settings} 
+                onSettingsChange={handleSettingsChange}
+                images={imagesToDisplay} 
+                isLoading={isLoading && loadedImages.length > 0}
+                focusedImageIds={focusedImageIds}
+                onFocusChange={setFocusedImageIds}
+                isRecording={isRecording}
+                isExporting={isExporting}
+              />
+            )}
+          </main>
+          
+          <BottomBar 
+            imageFiles={imageFiles}
+            onRemoveImage={handleRemoveImage}
+            onAddImages={(files) => {
+              const event = { target: { files } } as React.ChangeEvent<HTMLInputElement>;
+              handleFileChange(event);
+            }}
+            onReorderImages={handleImageReorder}
+            onFocusChange={setFocusedImageIds}
+            focusedImageIds={focusedImageIds}
+          />
+        </div>
+
+        <RightSidebar 
+          settings={settings}
+          onSettingsChange={handleSettingsChange}
           imageFiles={imageFiles}
-          onImageReorder={handleImageReorder}
+          onReorderImages={handleImageReorder}
+          onRemoveImage={handleRemoveImage}
+          onBgImageChange={handleBgImageChange}
+          onShapeFileChange={handleShapeFileChange}
           onRandomFocus={handleRandomFocus}
           colorPalette={colorPalette}
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          canUndo={canUndo}
-          canRedo={canRedo}
-          hasPng={hasPng}
-          onRegeneratePngBgs={handleRegeneratePngBgs}
+          onAddTextOverlay={handleAddTextOverlay}
+          onUpdateTextOverlay={handleUpdateTextOverlay}
+          onRemoveTextOverlay={handleRemoveTextOverlay}
+          focusedImageIds={focusedImageIds}
+          onFocusChange={setFocusedImageIds}
         />
-        <main className="flex-1 flex items-center justify-center p-4 bg-gray-800/50 overflow-hidden relative">
-           {imagesToDisplay.length === 0 && imageFiles.length === 0 ? (
-            <WelcomeScreen onFileChange={handleFileChange} onUseDemoImages={handleUseDemoImages} isLoading={isLoading} />
-          ) : (
-            <CanvasArea 
-              ref={canvasAreaRef}
-              settings={settings} 
-              images={imagesToDisplay} 
-              isLoading={isLoading && loadedImages.length > 0}
-              focusedImageIds={focusedImageIds}
-              onFocusChange={setFocusedImageIds}
-              isRecording={isRecording}
-              isExporting={isExporting}
-            />
-          )}
-        </main>
       </div>
     </div>
   );

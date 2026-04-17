@@ -3,6 +3,22 @@ import { Settings, LayoutType, GridStyle, VoronoiDistribution, TieredShape, Back
 import type { TranslationKey } from './App';
 
 export const getLayoutOptions = (t) => [
+  // Device Mockups
+  { id: LayoutType.Showcase, name: t('layoutShowcase') },
+  { id: LayoutType.MockupSpiral, name: 'Espiral' },
+  { id: LayoutType.MockupDiagonal, name: 'Diagonal' },
+  { id: LayoutType.MockupCascade, name: 'Cascata' },
+  { id: LayoutType.MockupGrid3D, name: 'Grade 3D' },
+  { id: LayoutType.MockupStack, name: 'Empilhado' },
+  { id: LayoutType.MockupWall, name: t('layoutMockupWall') },
+  { id: LayoutType.IsometricGrid, name: t('layoutIsometricGrid') },
+  { id: LayoutType.StaggeredRows, name: t('layoutStaggeredRows') },
+  { id: LayoutType.FloatingCloud, name: t('layoutFloatingCloud') },
+  { id: LayoutType.PerspectiveGrid, name: t('layoutPerspectiveGrid') },
+  { id: LayoutType.CoverFlow, name: t('layoutCoverFlow') },
+  { id: LayoutType.Carousel, name: t('layoutCarousel') },
+  { id: LayoutType.Floating, name: t('layoutFloating') },
+  { id: LayoutType.Freeform, name: 'Livre (Manual)' },
   // 3D & Dynamic
   { id: LayoutType.Orbital, name: t('layoutOrbital') },
   { id: LayoutType.Wall3D, name: t('layoutWall3D') },
@@ -128,6 +144,13 @@ export const STYLE_PRESETS: { id: string; nameKey: TranslationKey; settings: Par
   },
 ];
 
+export const PRESETS = STYLE_PRESETS;
+
+export const PALETTE_OPTIONS = Object.keys(COLOR_PALETTES).map(id => ({
+  id,
+  nameKey: COLOR_PALETTES[id].nameKey
+}));
+
 
 export const DEFAULT_SETTINGS: Settings = {
   layout: LayoutType.Orbital,
@@ -141,7 +164,7 @@ export const DEFAULT_SETTINGS: Settings = {
   seed: 0.5,
   imageMultiplier: 1,
   shadowBlur: 25, 
-  cornerRadius: 12, 
+  cornerRadius: 0, 
   imageFit: 'cover',
   vignette: 0.2, // Softer default vignette
   exportFormat: 'jpeg',
@@ -159,6 +182,12 @@ export const DEFAULT_SETTINGS: Settings = {
   borderColor: '#FFFFFF',
   borderWidth: 10,
   cardStyle: CardStyle.Default,
+  deviceType: 'auto',
+  mockupSpacing: 30,
+  mockupAngle: 15,
+  mockupBezelColor: '#1a1a1a',
+  mockupReflection: 0.3,
+  canvasPadding: 40,
   focalPoint: false,
   focalPointBlur: 5,
   focalPointFocusTransition: 0,
@@ -190,6 +219,10 @@ export const DEFAULT_SETTINGS: Settings = {
   journalRowVariation: 0.3, 
   organicVariation: 0.2,
   globalRotation: 0,
+  globalOffsetX: 0,
+  globalOffsetY: 0,
+  autoLighting: true,
+  lockImages: false,
   perspectiveAngle: 0,
   perspectiveTilt: 0,
   perspectiveZoom: 1,
@@ -202,6 +235,15 @@ export const DEFAULT_SETTINGS: Settings = {
   orbitalLightAngle: 45,
   orbitalLightIntensity: 0.5,
   orbitalDoF: 4,
-  addPngBackground: true,
-  bgSeed: 0.1,
+  imageOverrides: {},
+  textOverlays: [],
+  globalFilters: {
+    grayscale: 0,
+    sepia: 0,
+    brightness: 1,
+    contrast: 1,
+    hueRotate: 0,
+    saturate: 1,
+  },
+  lowResPreview: false,
 };

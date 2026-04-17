@@ -72,6 +72,7 @@ export const exportVideo = (
     initialState: Settings,
     imageFiles: ImageFile[],
     finalState: Settings,
+    canvasSize: { width: number, height: number }
 ): Promise<Blob> => {
     return new Promise(async (resolve, reject) => {
         if (keyframes.length < 2) {
@@ -98,12 +99,13 @@ export const exportVideo = (
         }
 
         const [aspectW, aspectH] = finalState.aspectRatio.split('/').map(Number);
-        if (isNaN(aspectW) || isNaN(aspectH) || aspectH === 0) {
+        const safeAspectW = aspectW || 1;
+        if (isNaN(safeAspectW) || isNaN(aspectH)) {
              return reject(new Error(`Invalid aspect ratio for video export: ${finalState.aspectRatio}`));
         }
 
         const videoWidth = 1280; // HD resolution for a lighter video file
-        const videoHeight = Math.round(videoWidth * (aspectH / aspectW));
+        const videoHeight = Math.round(videoWidth * (aspectH / safeAspectW));
 
         const canvas = document.createElement('canvas');
         canvas.width = videoWidth;
@@ -138,7 +140,12 @@ export const exportVideo = (
         let startTime: number | null = null;
         let currentKeyframeIndex = 0;
 
-        recorder.start();
+        try {
+            recorder.start();
+        } catch (e) {
+            cleanup();
+            return reject(e);
+        }
 
         const renderFrame = (timestamp: number) => {
             if (!startTime) startTime = timestamp;
@@ -166,9 +173,38 @@ export const exportVideo = (
 
             const currentSettings = interpolateSettings(startKf.settings, endKf.settings, progress);
             
+            const safeCanvasWidth = canvasSize.width || 1;
+            const scaleFactor = videoWidth / safeCanvasWidth;
+            
+            // Scale image overrides
+            const scaledImageOverrides = { ...currentSettings.imageOverrides };
+            for (const key in scaledImageOverrides) {
+                scaledImageOverrides[key] = {
+                    ...scaledImageOverrides[key],
+                    offsetX: (scaledImageOverrides[key].offsetX || 0) * scaleFactor,
+                    offsetY: (scaledImageOverrides[key].offsetY || 0) * scaleFactor,
+                };
+            }
+
+            const scaledSettings = {
+                ...currentSettings,
+                shadowBlur: currentSettings.shadowBlur * scaleFactor,
+                cornerRadius: currentSettings.cornerRadius * scaleFactor,
+                borderWidth: currentSettings.borderWidth * scaleFactor,
+                focalPointBlur: currentSettings.focalPointBlur * scaleFactor,
+                globalOffsetX: (currentSettings.globalOffsetX || 0) * scaleFactor,
+                globalOffsetY: (currentSettings.globalOffsetY || 0) * scaleFactor,
+                spacing: currentSettings.spacing * scaleFactor,
+                canvasPadding: currentSettings.canvasPadding * scaleFactor,
+                padding: currentSettings.padding * scaleFactor,
+                orbitalRadius: currentSettings.orbitalRadius * scaleFactor,
+                orbitalFocus: currentSettings.orbitalFocus * scaleFactor,
+                imageOverrides: scaledImageOverrides,
+            };
+            
             // Draw the collage for the current frame
-            const renderData = calculateLayout(images, videoWidth, videoHeight, currentSettings, null);
-            drawCollage(ctx, videoWidth, videoHeight, renderData, currentSettings, [], imageFiles, bgImage);
+            const renderData = calculateLayout(images, videoWidth, videoHeight, scaledSettings, null);
+            drawCollage(ctx, videoWidth, videoHeight, renderData, scaledSettings, [], imageFiles, bgImage);
 
             requestAnimationFrame(renderFrame);
         };

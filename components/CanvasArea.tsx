@@ -8,6 +8,7 @@ import { drawCollage } from '../utils/drawingUtils';
 
 interface CanvasAreaProps {
   settings: Settings;
+  onSettingsChange: (newSettings: React.SetStateAction<Settings>) => void;
   images: ImageFile[];
   isLoading: boolean;
   focusedImageIds: string[];
@@ -18,6 +19,7 @@ interface CanvasAreaProps {
 
 export interface CanvasAreaHandle {
   exportImage: () => void;
+  getCanvasSize: () => { width: number, height: number };
 }
 
 // A custom hook to load images from URLs
@@ -132,6 +134,7 @@ const useBackgroundImage = (imageUrl: string | null): [HTMLImageElement | null, 
 
 export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({ 
     settings, 
+    onSettingsChange,
     images, 
     isLoading, 
     focusedImageIds, 
@@ -150,6 +153,23 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const renderDataRef = useRef<ImageRenderData[]>([]);
   const [interactionHint, setInteractionHint] = useState<string | null>(null);
   const [isProcessingExport, setIsProcessingExport] = useState(false);
+
+  // Dragging state
+  const [dragState, setDragState] = useState<{
+    isDragging: boolean;
+    draggedId: string | null; // null means panning the whole canvas
+    startX: number;
+    startY: number;
+    initialOffsetX: number;
+    initialOffsetY: number;
+  }>({
+    isDragging: false,
+    draggedId: null,
+    startX: 0,
+    startY: 0,
+    initialOffsetX: 0,
+    initialOffsetY: 0
+  });
   
   useEffect(() => {
     let hint: string | null = null;
@@ -171,10 +191,11 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
       if (!canvas || !ctx || loadedImageElements.length === 0) return;
 
       const dpr = window.devicePixelRatio || 1;
+      const previewScale = settings.lowResPreview ? 0.5 : 1;
       
-      canvas.width = canvasSize.width * dpr;
-      canvas.height = canvasSize.height * dpr;
-      ctx.scale(dpr, dpr);
+      canvas.width = canvasSize.width * dpr * previewScale;
+      canvas.height = canvasSize.height * dpr * previewScale;
+      ctx.scale(dpr * previewScale, dpr * previewScale);
       canvas.style.width = `${canvasSize.width}px`;
       canvas.style.height = `${canvasSize.height}px`;
 
@@ -226,6 +247,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   }, [settings.aspectRatio]);
 
   useImperativeHandle(ref, () => ({
+    getCanvasSize: () => canvasSize,
     exportImage: async () => {
       setIsProcessingExport(true);
       
@@ -272,18 +294,39 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
 
           const exportWidth = 3000;
           const [aspectW, aspectH] = settings.aspectRatio.split('/').map(Number);
-          const exportHeight = exportWidth * (aspectH / aspectW);
+          const safeAspectW = aspectW || 1;
+          const exportHeight = exportWidth * (aspectH / safeAspectW);
 
           exportCanvas.width = exportWidth;
           exportCanvas.height = exportHeight;
 
-          const scaleFactor = exportWidth / canvasSize.width;
+          const safeCanvasWidth = canvasSize.width || 1;
+          const scaleFactor = exportWidth / safeCanvasWidth;
+          
+          // Scale image overrides
+          const scaledImageOverrides = { ...settings.imageOverrides };
+          for (const key in scaledImageOverrides) {
+              scaledImageOverrides[key] = {
+                  ...scaledImageOverrides[key],
+                  offsetX: (scaledImageOverrides[key].offsetX || 0) * scaleFactor,
+                  offsetY: (scaledImageOverrides[key].offsetY || 0) * scaleFactor,
+              };
+          }
+
           const offscreenSettings = {
               ...settings,
               shadowBlur: settings.shadowBlur * scaleFactor,
               cornerRadius: settings.cornerRadius * scaleFactor,
               borderWidth: settings.borderWidth * scaleFactor,
               focalPointBlur: settings.focalPointBlur * scaleFactor,
+              globalOffsetX: (settings.globalOffsetX || 0) * scaleFactor,
+              globalOffsetY: (settings.globalOffsetY || 0) * scaleFactor,
+              spacing: settings.spacing * scaleFactor,
+              canvasPadding: settings.canvasPadding * scaleFactor,
+              padding: settings.padding * scaleFactor,
+              orbitalRadius: settings.orbitalRadius * scaleFactor,
+              orbitalFocus: settings.orbitalFocus * scaleFactor,
+              imageOverrides: scaledImageOverrides,
           };
 
           let renderData = calculateLayout(validOriginals, exportWidth, exportHeight, offscreenSettings, shapeMaskData);
@@ -310,31 +353,118 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
     }
   }));
   
-  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!settings.focalPoint) return;
-
+  const getCanvasCoords = (event: React.MouseEvent | MouseEvent) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvasSize.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvasSize.height
+    };
+  };
 
-    const clickedItem = [...renderDataRef.current].reverse().find(item => 
-      x >= item.x && x <= item.x + item.width &&
-      y >= item.y && y <= item.y + item.height
-    );
+  const findItemAt = (x: number, y: number) => {
+    if (!renderDataRef.current) return null;
+    return [...renderDataRef.current].reverse().find(item => {
+      const dx = x - (item.x + item.width / 2);
+      const dy = y - (item.y + item.height / 2);
+      const angle = -item.rotation * (Math.PI / 180);
+      const rx = dx * Math.cos(angle) - dy * Math.sin(angle);
+      const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
+      return Math.abs(rx) <= item.width / 2 && Math.abs(ry) <= item.height / 2;
+    });
+  };
 
-    if (clickedItem) {
+  const handleMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasCoords(event);
+    const clickedItem = findItemAt(x, y);
+
+    if (clickedItem && !settings.lockImages) {
       if (settings.focalPoint) {
-          onFocusChange(prev =>
-            prev.includes(clickedItem.id)
-              ? prev.filter(id => id !== clickedItem.id)
-              : [...prev, clickedItem.id]
-          );
+        onFocusChange(prev =>
+          prev.includes(clickedItem.id)
+            ? prev.filter(id => id !== clickedItem.id)
+            : [...prev, clickedItem.id]
+        );
+      } else {
+        onFocusChange([clickedItem.id]);
+        
+        // Start dragging
+        const override = settings.imageOverrides[clickedItem.id] || {};
+        setDragState({
+          isDragging: true,
+          draggedId: clickedItem.id,
+          startX: x,
+          startY: y,
+          initialOffsetX: override.offsetX || 0,
+          initialOffsetY: override.offsetY || 0
+        });
+      }
+    } else {
+      onFocusChange([]);
+      if (!settings.focalPoint) {
+        // Start panning the whole canvas
+        setDragState({
+          isDragging: true,
+          draggedId: null,
+          startX: x,
+          startY: y,
+          initialOffsetX: settings.globalOffsetX || 0,
+          initialOffsetY: settings.globalOffsetY || 0
+        });
       }
     }
   };
+
+  const handleMouseMove = useCallback((event: MouseEvent) => {
+    if (!dragState.isDragging) return;
+
+    const { x, y } = getCanvasCoords(event as any);
+    const dx = x - dragState.startX;
+    const dy = y - dragState.startY;
+
+    if (dragState.draggedId) {
+      // Dragging a specific item
+      onSettingsChange(prev => ({
+        ...prev,
+        imageOverrides: {
+          ...prev.imageOverrides,
+          [dragState.draggedId!]: {
+            ...(prev.imageOverrides[dragState.draggedId!] || {}),
+            offsetX: dragState.initialOffsetX + dx,
+            offsetY: dragState.initialOffsetY + dy
+          }
+        }
+      }));
+    } else {
+      // Panning the whole canvas
+      onSettingsChange(prev => ({
+        ...prev,
+        globalOffsetX: dragState.initialOffsetX + dx,
+        globalOffsetY: dragState.initialOffsetY + dy
+      }));
+    }
+  }, [dragState, canvasSize, onSettingsChange]);
+
+  const handleMouseUp = useCallback(() => {
+    if (dragState.isDragging) {
+      setDragState(prev => ({ ...prev, isDragging: false, draggedId: null }));
+    }
+  }, [dragState.isDragging]);
+
+  useEffect(() => {
+    if (dragState.isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragState.isDragging, handleMouseMove, handleMouseUp]);
 
   const isShapeLayoutWithMask = 
     (settings.layout === LayoutType.CustomShape) &&
@@ -344,8 +474,9 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
   const isClickable = settings.focalPoint;
   
   const cursorStyle = () => {
-      if (isClickable) return 'pointer';
-      return 'default';
+      if (dragState.isDragging) return 'grabbing';
+      if (isClickable) return 'crosshair';
+      return 'grab';
   }
 
   const showProcessingOverlay = showLoadingOverlay || isExporting || isProcessingExport;
@@ -357,7 +488,7 @@ export const CanvasArea = forwardRef<CanvasAreaHandle, CanvasAreaProps>(({
             <canvas 
                 ref={canvasRef} 
                 style={{cursor: cursorStyle()}}
-                onClick={handleCanvasClick}
+                onMouseDown={handleMouseDown}
             />
             {isRecording && (
                 <div className="absolute top-4 right-4 flex items-center space-x-2 bg-red-600/80 text-white text-sm px-3 py-1.5 rounded-lg shadow-lg backdrop-blur-sm pointer-events-none">

@@ -26,7 +26,7 @@ const seededRandom = (seed: number) => {
 };
 
 // Helper to calculate source rect for 'cover' or 'contain' image fitting.
-function getCropping(image: HTMLImageElement, destWidth: number, destHeight: number, imageFit: ImageFit): { sx: number, sy: number, sWidth: number, sHeight: number } {
+export function getCropping(image: HTMLImageElement, destWidth: number, destHeight: number, imageFit: ImageFit): { sx: number, sy: number, sWidth: number, sHeight: number } {
     if (!image.naturalWidth || !image.naturalHeight || !destWidth || !destHeight) {
         return { sx: 0, sy: 0, sWidth: 1, sHeight: 1 };
     }
@@ -83,8 +83,14 @@ function calculateGridLayout(images: HTMLImageElement[], canvasWidth: number, ca
     const imagesToDisplay = images.length > 0 ? Array.from({length: rows * cols}, (_, i) => images[i % images.length]) : [];
 
     imagesToDisplay.forEach((image, index) => {
-        const imageAspect = image.naturalWidth / image.naturalHeight || 1;
-        const imgHeight = colWidth / imageAspect;
+        const imageAspect = getDeviceAspect(image, settings.deviceType);
+        const padding = settings.padding;
+        const availableWidth = Math.max(0, colWidth - padding * 2);
+        let imgHeight = colWidth / imageAspect;
+        
+        if (availableWidth > 0) {
+             imgHeight = (availableWidth / imageAspect) + padding * 2;
+        }
 
         let targetCol = 0;
         let minColHeight = colHeights[0];
@@ -97,7 +103,7 @@ function calculateGridLayout(images: HTMLImageElement[], canvasWidth: number, ca
 
         const x = settings.spacing + targetCol * (colWidth + settings.spacing);
         const y = colHeights[targetCol];
-        const { sx, sy, sWidth, sHeight } = getCropping(image, colWidth, imgHeight, 'cover');
+        const { sx, sy, sWidth, sHeight } = getCropping(image, colWidth, imgHeight, settings.imageFit);
         
         renderData.push({
             image,
@@ -202,7 +208,7 @@ function calculateMosaicRowsLayout(images: HTMLImageElement[], canvasWidth: numb
     const initialY = settings.spacing + i * (rowHeight + settings.spacing);
     
     for(const image of imagesInRow){
-      const imageAspectRatio = Math.max(0.25, Math.min(4, image.naturalWidth / image.naturalHeight || 1.6));
+      const imageAspectRatio = Math.max(0.25, Math.min(4, getDeviceAspect(image, settings.deviceType)));
       
       const tileWidth = (imageAspectRatio / totalAspectRatio) * rowWidth;
       const tileHeight = rowHeight;
@@ -214,7 +220,7 @@ function calculateMosaicRowsLayout(images: HTMLImageElement[], canvasWidth: numb
 
       const rotation = (random() - 0.5) * 30 * settings.mosaicShapeVariation;
       
-      const { sx, sy, sWidth, sHeight } = getCropping(image, finalWidth, finalHeight, 'cover');
+      const { sx, sy, sWidth, sHeight } = getCropping(image, finalWidth, finalHeight, settings.imageFit);
       
       const cornerRadius = settings.cornerRadius * (1 - settings.mosaicShapeVariation * (random() * 0.5));
 
@@ -251,7 +257,7 @@ function calculatePileLayout(images: HTMLImageElement[], canvasWidth: number, ca
     const chaosFactor = 1 - pileOrganization;
 
     imagesToDisplay.forEach(({ image, id }) => {
-        const aspectRatio = image.naturalWidth / image.naturalHeight || 1;
+        const aspectRatio = getDeviceAspect(image, settings.deviceType);
         
         const canvasDiagonal = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
         const baseCardDim = canvasDiagonal * 0.2 * pileCardSize;
@@ -639,7 +645,7 @@ function calculateVoronoiLayout(images: HTMLImageElement[], canvasWidth: number,
         
         if (width < 1 || height < 1) continue;
 
-        const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, 'cover');
+        const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, settings.imageFit);
 
         renderData.push({
             image,
@@ -750,7 +756,7 @@ function calculateCustomShapeLayout(images: HTMLImageElement[], canvasWidth: num
         const height = cell_dim * 0.9;
         const x = point.x - width / 2;
         const y = point.y - height / 2;
-        const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, 'cover');
+        const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, settings.imageFit);
         renderData.push({ image, id: image.dataset.id!, x, y, width, height, rotation: 0, sx, sy, sWidth, sHeight });
     });
 
@@ -768,7 +774,7 @@ function calculateCustomShapeLayout(images: HTMLImageElement[], canvasWidth: num
             x = Math.max(-width * 0.3, Math.min(x, canvasWidth - width * 0.7));
             y = Math.max(-height * 0.3, Math.min(y, canvasHeight - height * 0.7));
 
-            const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, 'cover');
+            const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, settings.imageFit);
             renderData.push({ image, id: image.dataset.id!, x, y, width, height, rotation, sx, sy, sWidth, sHeight });
         }
     }
@@ -787,7 +793,7 @@ function calculateCustomShapeLayout(images: HTMLImageElement[], canvasWidth: num
             x = Math.max(-width * 0.3, Math.min(x, canvasWidth - width * 0.7));
             y = Math.max(-height * 0.3, Math.min(y, canvasHeight - height * 0.7));
 
-            const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, 'cover');
+            const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, settings.imageFit);
             renderData.push({ image, id: image.dataset.id!, x, y, width, height, rotation, sx, sy, sWidth, sHeight });
         }
     }
@@ -848,7 +854,7 @@ function calculateTieredShapeLayout(images: HTMLImageElement[], canvasWidth: num
                 const jitterY = (random() - 0.5) * baseSize * settings.organicVariation;
                 const rotation = (random() - 0.5) * 20 * settings.organicVariation;
 
-                const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, 'cover');
+                const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, settings.imageFit);
                 renderData.push({
                     image,
                     id: `${image.dataset.id}::clone::${imageIndex}`,
@@ -944,6 +950,30 @@ function calculateGoldenSpiralLayout(images: HTMLImageElement[], canvasWidth: nu
     
     const maxDist = Math.sqrt(centerX*centerX + centerY*centerY) * 1.5;
 
+    // Add a hero image in the center for Hyperbolic spiral
+    if (spiralType === SpiralType.Hyperbolic && images.length > 0) {
+        const heroImage = images[0];
+        const heroAspect = getDeviceAspect(heroImage, settings.deviceType);
+        const heroWidth = Math.min(canvasWidth, canvasHeight) * 0.4; // 40% of canvas
+        const heroHeight = heroWidth / heroAspect;
+        const { sx, sy, sWidth, sHeight } = getCropping(heroImage, heroWidth, heroHeight, settings.imageFit);
+
+        renderData.push({
+            image: heroImage,
+            id: heroImage.dataset.id!,
+            x: centerX - heroWidth / 2,
+            y: centerY - heroHeight / 2,
+            width: heroWidth,
+            height: heroHeight,
+            rotation: 0,
+            sx, sy, sWidth, sHeight,
+            z: 9999 // Ensure it's on top
+        });
+        
+        // Start the spiral from the second image
+        imageIndex = 1;
+    }
+
     while (true) {
         const image = images[imageIndex % images.length];
         
@@ -1025,7 +1055,7 @@ function calculateGoldenSpiralLayout(images: HTMLImageElement[], canvasWidth: nu
         }
 
         // --- Determine image dimensions ---
-        const imageAspect = image.naturalWidth / image.naturalHeight || 1;
+        const imageAspect = getDeviceAspect(image, settings.deviceType);
         let width = baseSize * scale;
         let height = width / imageAspect;
 
@@ -1079,7 +1109,7 @@ function calculateJournalLayout(images: HTMLImageElement[], canvasWidth: number,
     while (imageIndex < images.length) {
         const image = images[imageIndex];
         
-        const imageAspect = image.naturalWidth / image.naturalHeight || 1;
+        const imageAspect = getDeviceAspect(image, settings.deviceType);
         // Apply row variation for a more organic, scrapbook feel.
         const heightVariation = 1 + (random() - 0.5) * journalRowVariation;
         const imgHeight = (colWidth / imageAspect) * heightVariation;
@@ -1098,7 +1128,7 @@ function calculateJournalLayout(images: HTMLImageElement[], canvasWidth: number,
         const y_offset = (imgHeight * journalOverlap * (random() * 0.5 + 0.5));
         const y = colHeights[targetCol] - y_offset;
 
-        const { sx, sy, sWidth, sHeight } = getCropping(image, colWidth, imgHeight, 'cover');
+        const { sx, sy, sWidth, sHeight } = getCropping(image, colWidth, imgHeight, settings.imageFit);
         
         const rotation = (random() - 0.5) * 8;
 
@@ -1199,7 +1229,7 @@ function calculateCircularLayout(images: HTMLImageElement[], canvasWidth: number
         for (let i = 0; i < countInRing; i++) {
             if (imageIndex >= numImages) break;
             const image = images[imageIndex];
-            const imageAspect = image.naturalWidth / image.naturalHeight || 1;
+            const imageAspect = getDeviceAspect(image, settings.deviceType);
 
             let angle = i * angleStep;
 
@@ -1218,7 +1248,7 @@ function calculateCircularLayout(images: HTMLImageElement[], canvasWidth: number
             
             const rotation = angle * (180 / Math.PI) + 90; // Point outwards
             
-            const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, 'cover');
+            const { sx, sy, sWidth, sHeight } = getCropping(image, width, height, settings.imageFit);
 
             renderData.push({
                 image,
@@ -1280,7 +1310,7 @@ function calculateOrbitalLayout(images: HTMLImageElement[], canvasWidth: number,
         const x2d = x3d * scale + centerX;
         const y2d = y_rot * scale + centerY;
 
-        const imgAspect = image.naturalWidth / image.naturalHeight || 1;
+        const imgAspect = getDeviceAspect(image, settings.deviceType);
         const baseSize = Math.min(canvasWidth, canvasHeight) * 0.2;
         const width = baseSize * scale;
         const height = width / imgAspect;
@@ -1330,6 +1360,789 @@ function calculateOrbitalLayout(images: HTMLImageElement[], canvasWidth: number,
 
 
 
+// --- NEW MOCKUP LAYOUTS ---
+
+function getDeviceAspect(image: HTMLImageElement, deviceType: string): number {
+    if (deviceType === 'phone') return 9 / 19.5; // Modern phone aspect ratio
+    if (deviceType === 'laptop') return 16 / 10; // Modern laptop aspect ratio
+    return image.naturalWidth / image.naturalHeight || 1;
+}
+
+function calculateShowcaseLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    // Main Hero Image - Balanced size
+    const heroW = Math.min(canvasWidth, canvasHeight) * 0.48;
+    const heroAspect = getDeviceAspect(images[0], settings.deviceType);
+    const heroH = heroW / heroAspect;
+    
+    const { sx: hsx, sy: hsy, sWidth: hsw, sHeight: hsh } = getCropping(images[0], heroW, heroH, settings.imageFit);
+    
+    renderData.push({
+        image: images[0],
+        id: images[0].dataset.id!,
+        x: centerX - heroW / 2,
+        y: centerY - heroH / 2,
+        width: heroW, height: heroH,
+        rotation: (settings.mockupAngle - 50) * 0.1,
+        sx: hsx, sy: hsy, sWidth: hsw, sHeight: hsh,
+        brightness: 1,
+        _zIndex: 100,
+    } as any);
+
+    // Supporting images arranged in a clean fan/arc behind
+    const others = images.slice(1);
+    const numOthers = others.length;
+    if (numOthers === 0) return renderData;
+
+    const maxOthers = Math.min(numOthers, 24);
+    const sideW = heroW * 0.55;
+    const spacing = sideW * (settings.mockupSpacing / 100);
+
+    for (let i = 0; i < maxOthers; i++) {
+        const img = others[i];
+        const aspect = getDeviceAspect(img, settings.deviceType);
+        const w = sideW;
+        const h = w / aspect;
+
+        // Arrange in a clean symmetrical arc behind the hero
+        const arcAngle = Math.PI * (0.8 + Math.min(maxOthers / 30, 0.2)); 
+        const angle = (i / (maxOthers - 1 || 1)) * arcAngle - arcAngle / 2 - Math.PI / 2;
+        
+        // Stagger radius for a more "fan" look
+        const radius = heroW * (0.7 + (i % 2 === 0 ? 0.08 : 0)) + spacing;
+        
+        const x = centerX + Math.cos(angle) * radius - w / 2;
+        const y = centerY + Math.sin(angle) * radius - h / 2;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+        renderData.push({
+            image: img,
+            id: img.dataset.id!,
+            x, y,
+            width: w, height: h,
+            rotation: (angle + Math.PI / 2) * (180 / Math.PI) * 0.4 + (settings.mockupAngle - 50) * 0.2,
+            sx, sy, sWidth, sHeight,
+            brightness: 0.9,
+            _zIndex: 10 + i,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateIsometricLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    // Determine grid dimensions based on image count and canvas aspect
+    let cols = Math.ceil(Math.sqrt(numImages * (canvasWidth / canvasHeight)));
+    if (numImages <= 3) cols = numImages;
+    const rows = Math.ceil(numImages / cols);
+
+    const baseW = Math.min(canvasWidth / (cols + rows), canvasHeight / (cols + rows)) * 1.5;
+    const gap = baseW * (settings.mockupSpacing / 100) * 0.6;
+    
+    // Isometric projection constants (30 degrees)
+    const angle = Math.PI / 6;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    // Calculate total grid dimensions to center it precisely
+    const gridW = (cols * (baseW + gap) * cosA) + (rows * (baseW + gap) * cosA);
+    const gridH = (cols * (baseW + gap) * sinA) + (rows * (baseW + gap) * sinA);
+    
+    // Center point of the canvas
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+
+    for (let i = 0; i < numImages; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+
+        const aspect = getDeviceAspect(images[i], settings.deviceType);
+        const w = baseW;
+        const h = w / aspect;
+
+        // True isometric positioning relative to center
+        const isoX = (col - (cols - 1) / 2) * (baseW + gap) * cosA - (row - (rows - 1) / 2) * (baseW + gap) * cosA;
+        const isoY = (col - (cols - 1) / 2) * (baseW + gap) * sinA + (row - (rows - 1) / 2) * (baseW + gap) * sinA;
+
+        const x = centerX + isoX - w / 2;
+        const y = centerY + isoY - h / 2;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(images[i], w, h, settings.imageFit);
+
+        renderData.push({
+            image: images[i],
+            id: images[i].dataset.id!,
+            x, y,
+            width: w, height: h,
+            rotation: -30 + (settings.mockupAngle - 50) * 0.2,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (row + col) * 0.05,
+            _zIndex: row + col,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateCoverFlowLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    const baseSize = Math.min(canvasWidth, canvasHeight) * 0.5;
+    
+    // Sliders
+    const spacing = baseSize * (settings.mockupSpacing / 50);
+    const tilt = settings.mockupAngle;
+
+    const centerIdx = Math.floor(numImages / 2);
+
+    for (let i = 0; i < numImages; i++) {
+        const image = images[i];
+        const aspect = getDeviceAspect(image, settings.deviceType);
+        
+        const distFromCenter = i - centerIdx;
+        const absDist = Math.abs(distFromCenter);
+        
+        const scale = Math.max(0.4, 1 - absDist * 0.2);
+        const w = baseSize * scale;
+        const h = w / aspect;
+        
+        const xOffset = Math.sign(distFromCenter) * (Math.pow(absDist, 0.8) * spacing);
+        const x = centerX + xOffset - w / 2;
+        const y = centerY - h / 2;
+        
+        const { sx, sy, sWidth, sHeight } = getCropping(image, w, h, settings.imageFit);
+        
+        renderData.push({
+            image,
+            id: image.dataset.id!,
+            x, y,
+            width: w, height: h,
+            rotation: distFromCenter * (tilt !== 0 ? tilt : 5),
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (absDist * 0.15),
+            _zIndex: -absDist,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateCarouselLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    const baseSize = Math.min(canvasWidth, canvasHeight) * 0.5;
+    const spacing = baseSize * (settings.mockupSpacing / 50);
+    const tilt = settings.mockupAngle;
+
+    const centerIdx = Math.floor(numImages / 2);
+
+    for (let i = 0; i < numImages; i++) {
+        const image = images[i];
+        const aspect = getDeviceAspect(image, settings.deviceType);
+        
+        const distFromCenter = i - centerIdx;
+        const absDist = Math.abs(distFromCenter);
+        
+        const scale = Math.max(0.6, 1 - absDist * 0.15);
+        const w = baseSize * scale;
+        const h = w / aspect;
+        
+        const x = centerX + (distFromCenter * spacing) - w / 2;
+        const y = centerY - h / 2;
+        
+        const { sx, sy, sWidth, sHeight } = getCropping(image, w, h, settings.imageFit);
+        
+        renderData.push({
+            image,
+            id: image.dataset.id!,
+            x, y,
+            width: w, height: h,
+            rotation: tilt,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (absDist * 0.1),
+            _zIndex: -absDist,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateMockupWallLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const aspect = getDeviceAspect(images[0], settings.deviceType);
+    
+    // Calculate optimal grid columns
+    let cols = Math.ceil(Math.sqrt(numImages * (canvasWidth / canvasHeight)));
+    if (numImages <= 3) cols = numImages;
+    const rows = Math.ceil(numImages / cols);
+
+    const spacing = (canvasWidth / cols) * (settings.mockupSpacing / 100);
+    const w = (canvasWidth - (cols + 1) * spacing) / cols;
+    const h = w / aspect;
+
+    const totalW = cols * w + (cols - 1) * spacing;
+    const totalH = rows * h + (rows - 1) * spacing;
+
+    const startX = (canvasWidth - totalW) / 2;
+    const startY = (canvasHeight - totalH) / 2;
+
+    for (let i = 0; i < numImages; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        
+        // Stagger effect: shift every other column slightly
+        const staggerY = (col % 2 === 0) ? 0 : h * 0.15;
+
+        const x = startX + col * (w + spacing);
+        const y = startY + row * (h + spacing) + staggerY;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(images[i], w, h, settings.imageFit);
+
+        // Subtle perspective tilt based on column
+        const tiltX = (col - (cols - 1) / 2) * 2;
+
+        renderData.push({
+            image: images[i],
+            id: images[i].dataset.id!,
+            x, y, width: w, height: h,
+            rotation: tiltX + (settings.mockupAngle - 50) * 0.1,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (Math.abs(col - (cols - 1) / 2) * 0.02),
+            _zIndex: i,
+        } as any);
+    }
+
+    return renderData;
+}
+
+function calculateIsometricGridLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    let cols = Math.ceil(Math.sqrt(numImages));
+    if (numImages <= 3) cols = numImages;
+    const rows = Math.ceil(numImages / cols);
+
+    const baseW = Math.min(canvasWidth, canvasHeight) * 0.25;
+    const gap = baseW * (settings.mockupSpacing / 100) * 0.5;
+    
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+
+    // Calculate total height of the isometric diamond for centering
+    const totalIsoH = (cols + rows - 2) * (baseW + gap) * 0.25;
+
+    for (let i = 0; i < numImages; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+
+        const img = images[i];
+        const aspect = getDeviceAspect(img, settings.deviceType);
+        const w = baseW;
+        const h = w / aspect;
+
+        // True 2:1 Isometric projection positioning
+        const isoX = (col - row) * (baseW + gap) * 0.5;
+        const isoY = (col + row) * (baseW + gap) * 0.25;
+
+        const x = centerX + isoX - w / 2;
+        const y = centerY + isoY - totalIsoH / 2 - h / 2;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+        renderData.push({
+            image: img,
+            id: img.dataset.id!,
+            x, y, width: w, height: h,
+            rotation: -26.5 + (settings.mockupAngle - 50) * 0.4,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (row + col) * 0.05,
+            _zIndex: row + col,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateStaggeredRowsLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const rows = numImages > 15 ? 4 : (numImages > 8 ? 3 : 2);
+    const itemsPerRow = Math.ceil(numImages / rows);
+
+    const baseH = canvasHeight / (rows + 1);
+    const spacing = baseH * (settings.mockupSpacing / 100);
+
+    for (let r = 0; r < rows; r++) {
+        const rowItems = (r === rows - 1) ? numImages - r * itemsPerRow : itemsPerRow;
+        const rowOffset = (r % 2 === 0 ? 0 : baseH * 0.5);
+        
+        for (let c = 0; c < rowItems; c++) {
+            const idx = r * itemsPerRow + c;
+            if (idx >= numImages) break;
+
+            const aspect = getDeviceAspect(images[idx], settings.deviceType);
+            const h = baseH;
+            const w = h * aspect;
+
+            const x = (c * (w + spacing)) - (rowItems * (w + spacing)) / 2 + canvasWidth / 2 + rowOffset;
+            const y = (r * (h + spacing)) - (rows * (h + spacing)) / 2 + canvasHeight / 2;
+
+            const { sx, sy, sWidth, sHeight } = getCropping(images[idx], w, h, settings.imageFit);
+
+            renderData.push({
+                image: images[idx],
+                id: images[idx].dataset.id!,
+                x, y,
+                width: w, height: h,
+                rotation: (settings.mockupAngle - 50) * 0.3,
+                sx, sy, sWidth, sHeight,
+                brightness: 1,
+                _zIndex: idx,
+            } as any);
+        }
+    }
+
+    return renderData;
+}
+
+function calculateFloatingCloudLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    const random = seededRandom(settings.seed);
+    
+    // Increased spread for a less "grouped" feel
+    const spread = Math.min(canvasWidth, canvasHeight) * 0.45 * (1 + settings.mockupSpacing / 50);
+    const baseW = Math.min(canvasWidth, canvasHeight) * 0.3;
+
+    for (let i = 0; i < numImages; i++) {
+        // Golden angle distribution for natural organic feel
+        const angle = i * 2.39996 + (random() * 0.4 - 0.2); 
+        const radius = Math.pow(i / numImages, 0.6) * spread;
+        
+        const xPos = centerX + Math.cos(angle) * radius;
+        const yPos = centerY + Math.sin(angle) * radius;
+
+        const aspect = getDeviceAspect(images[i], settings.deviceType);
+        // Vary size and rotation more for a "cloud" feel
+        const sizeVar = 0.8 + random() * 0.4;
+        const w = baseW * sizeVar * (1 - (i / numImages) * 0.2);
+        const h = w / aspect;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(images[i], w, h, settings.imageFit);
+
+        renderData.push({
+            image: images[i],
+            id: images[i].dataset.id!,
+            x: xPos - w / 2,
+            y: yPos - h / 2,
+            width: w, height: h,
+            rotation: (random() * 20 - 10) + (settings.mockupAngle - 50) * 0.2,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (i / numImages) * 0.1,
+            _zIndex: numImages - i,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculatePerspectiveGridLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    let cols = Math.ceil(Math.sqrt(numImages * (canvasWidth / canvasHeight)));
+    if (numImages <= 4) cols = numImages;
+    const rows = Math.ceil(numImages / cols);
+
+    const baseW = canvasWidth * 0.25;
+    const spacing = baseW * (settings.mockupSpacing / 100) * 0.5;
+    
+    // Calculate total height by summing up row heights with perspective
+    let totalHeight = 0;
+    const rowHeights: number[] = [];
+    for (let r = 0; r < rows; r++) {
+        const scale = 1 - (r * 0.15);
+        const h = (baseW * scale) / 0.6; // Assuming 0.6 aspect for representative height
+        rowHeights.push(h);
+        totalHeight += h + (r < rows - 1 ? spacing * scale : 0);
+    }
+
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    const startY = centerY - totalHeight / 2;
+
+    let currentY = startY;
+    for (let r = 0; r < rows; r++) {
+        const scale = 1 - (r * 0.15);
+        const rowW = cols * (baseW * scale) + (cols - 1) * (spacing * scale);
+        const startX = centerX - rowW / 2;
+        
+        for (let c = 0; c < cols; c++) {
+            const i = r * cols + c;
+            if (i >= numImages) break;
+
+            const img = images[i];
+            const aspect = getDeviceAspect(img, settings.deviceType);
+            const w = baseW * scale;
+            const h = w / aspect;
+
+            const x = startX + c * (w + spacing * scale);
+            const y = currentY;
+
+            const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+            renderData.push({
+                image: img,
+                id: img.dataset.id!,
+                x, y, width: w, height: h,
+                rotation: (settings.mockupAngle - 50) * 0.1,
+                sx, sy, sWidth, sHeight,
+                brightness: 1 - (r * 0.1),
+                _zIndex: -r,
+            } as any);
+        }
+        currentY += rowHeights[r] + spacing * scale;
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateFloatingLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    const baseSize = Math.min(canvasWidth, canvasHeight) * 0.4;
+    const spreadX = canvasWidth * 0.3;
+    const spreadY = canvasHeight * 0.2;
+
+    for (let i = 0; i < numImages; i++) {
+        const image = images[i];
+        const aspect = getDeviceAspect(image, settings.deviceType);
+        
+        // Pseudo-random but deterministic distribution
+        const angle = (i / numImages) * Math.PI * 2;
+        const radius = (i % 2 === 0 ? 0.5 : 1) * spreadX;
+        
+        const scale = 0.7 + ((i * 13) % 10) / 30; // Random scale between 0.7 and 1.0
+        const w = baseSize * scale;
+        const h = w / aspect;
+        
+        // Center the first image, float the rest
+        let x = centerX - w / 2;
+        let y = centerY - h / 2;
+        
+        if (i > 0) {
+            x += Math.cos(angle) * radius;
+            y += Math.sin(angle) * spreadY + ((i % 3) - 1) * spreadY * 0.5;
+        }
+        
+        const rotation = ((i * 7) % 20) - 10; // Random rotation between -10 and 10
+        
+        const { sx, sy, sWidth, sHeight } = getCropping(image, w, h, settings.imageFit);
+        
+        renderData.push({
+            image,
+            id: image.dataset.id!,
+            x, y,
+            width: w, height: h,
+            rotation: i === 0 ? 0 : rotation,
+            sx, sy, sWidth, sHeight,
+            brightness: i === 0 ? 1 : 0.8,
+            _zIndex: i === 0 ? 100 : i, // Keep first image on top
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateFreeformLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const baseSize = Math.min(canvasWidth, canvasHeight) * 0.3;
+
+    images.forEach((image, i) => {
+        const id = image.dataset.id!;
+        const aspect = getDeviceAspect(image, settings.deviceType);
+        
+        // Default position: simple grid if no overrides
+        const cols = Math.ceil(Math.sqrt(numImages));
+        const rows = Math.ceil(numImages / cols);
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        
+        const w = baseSize;
+        const h = w / aspect;
+        
+        const x = (col + 0.5) * (canvasWidth / cols) - w / 2;
+        const y = (row + 0.5) * (canvasHeight / rows) - h / 2;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(image, w, h, settings.imageFit);
+
+        renderData.push({
+            image,
+            id,
+            x, y,
+            width: w, height: h,
+            rotation: 0,
+            sx, sy, sWidth, sHeight
+        });
+    });
+
+    return renderData;
+}
+
+function calculateMockupSpiralLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    const baseW = Math.min(canvasWidth, canvasHeight) * 0.35;
+    const spacing = settings.mockupSpacing / 100;
+
+    for (let i = 0; i < numImages; i++) {
+        // Logarithmic spiral for more "premium" feel
+        const angle = 0.7 * i * (1 + spacing * 0.5);
+        const radius = (baseW * 0.3) * Math.pow(1.1, i * (1 + spacing * 0.2));
+        
+        const x = centerX + Math.cos(angle) * radius;
+        const y = centerY + Math.sin(angle) * radius;
+
+        const img = images[i];
+        const aspect = getDeviceAspect(img, settings.deviceType);
+        // Scale down as it goes out
+        const w = baseW * (1 - (i / numImages) * 0.4);
+        const h = w / aspect;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+        renderData.push({
+            image: img,
+            id: img.dataset.id!,
+            x: x - w / 2,
+            y: y - h / 2,
+            width: w, height: h,
+            rotation: (angle * 180 / Math.PI) * 0.2 + (settings.mockupAngle - 50) * 0.4,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (i / numImages) * 0.2,
+            _zIndex: numImages - i,
+        } as any);
+    }
+
+    return renderData.sort((a: any, b: any) => a._zIndex - b._zIndex);
+}
+
+function calculateMockupDiagonalLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const baseW = Math.min(canvasWidth, canvasHeight) * 0.42;
+    const spacing = settings.mockupSpacing / 50;
+    
+    // Premium diagonal with depth
+    const stepX = baseW * 0.4 * spacing;
+    const stepY = baseW * 0.2 * spacing;
+
+    const totalW = baseW + (numImages - 1) * stepX;
+    const totalH = (baseW / 0.6) + (numImages - 1) * stepY;
+
+    const startX = (canvasWidth - totalW) / 2;
+    const startY = (canvasHeight - totalH) / 2;
+
+    for (let i = 0; i < numImages; i++) {
+        const img = images[i];
+        const aspect = getDeviceAspect(img, settings.deviceType);
+        // Slight scale variation for depth
+        const scale = 1 - (i * 0.05);
+        const w = baseW * scale;
+        const h = w / aspect;
+
+        const x = startX + i * stepX;
+        const y = startY + i * stepY;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+        renderData.push({
+            image: img,
+            id: img.dataset.id!,
+            x, y, width: w, height: h,
+            rotation: -12 + i * 3 + (settings.mockupAngle - 50) * 0.2,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (i * 0.04),
+            _zIndex: i,
+        } as any);
+    }
+
+    return renderData;
+}
+
+function calculateMockupCascadeLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const baseW = canvasWidth * 0.35;
+    const stepX = baseW * 0.4 * (settings.mockupSpacing / 50);
+    const stepY = baseW * 0.2 * (settings.mockupSpacing / 50);
+
+    const totalW = baseW + (numImages - 1) * stepX;
+    const totalH = (baseW / 0.6) + (numImages - 1) * stepY;
+
+    const startX = (canvasWidth - totalW) / 2;
+    const startY = (canvasHeight - totalH) / 2;
+
+    for (let i = 0; i < numImages; i++) {
+        const img = images[i];
+        const aspect = getDeviceAspect(img, settings.deviceType);
+        const w = baseW;
+        const h = w / aspect;
+
+        const x = startX + i * stepX;
+        const y = startY + i * stepY;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+        renderData.push({
+            image: img,
+            id: img.dataset.id!,
+            x, y, width: w, height: h,
+            rotation: -15 + (settings.mockupAngle - 50) * 0.3,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (i * 0.05),
+            _zIndex: i,
+        } as any);
+    }
+
+    return renderData;
+}
+
+function calculateMockupGrid3DLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    let cols = Math.ceil(Math.sqrt(numImages * (canvasWidth / canvasHeight)));
+    if (numImages <= 3) cols = numImages;
+    const rows = Math.ceil(numImages / cols);
+
+    const spacing = (canvasWidth / cols) * (settings.mockupSpacing / 100);
+    const w = (canvasWidth * 0.8 - (cols - 1) * spacing) / cols;
+    const aspect = getDeviceAspect(images[0], settings.deviceType);
+    const h = w / aspect;
+
+    const totalW = cols * w + (cols - 1) * spacing;
+    const totalH = rows * h + (rows - 1) * spacing;
+
+    const startX = (canvasWidth - totalW) / 2;
+    const startY = (canvasHeight - totalH) / 2;
+
+    for (let i = 0; i < numImages; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+
+        const x = startX + col * (w + spacing);
+        const y = startY + row * (h + spacing);
+
+        const { sx, sy, sWidth, sHeight } = getCropping(images[i], w, h, settings.imageFit);
+
+        // Apply a 3D perspective tilt
+        const tiltX = (col - (cols - 1) / 2) * 5;
+        const tiltY = (row - (rows - 1) / 2) * 5;
+
+        renderData.push({
+            image: images[i],
+            id: images[i].dataset.id!,
+            x, y, width: w, height: h,
+            rotation: tiltX + tiltY + (settings.mockupAngle - 50) * 0.2,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (row * 0.03),
+            _zIndex: i,
+        } as any);
+    }
+
+    return renderData;
+}
+
+function calculateMockupStackLayout(images: HTMLImageElement[], canvasWidth: number, canvasHeight: number, settings: Settings): ImageRenderData[] {
+    const renderData: ImageRenderData[] = [];
+    if (images.length === 0) return [];
+
+    const numImages = images.length;
+    const centerX = canvasWidth / 2;
+    const centerY = canvasHeight / 2;
+    
+    const baseW = Math.min(canvasWidth, canvasHeight) * 0.45;
+    const spacing = (settings.mockupSpacing / 100) * 40;
+
+    for (let i = 0; i < numImages; i++) {
+        const img = images[i];
+        const aspect = getDeviceAspect(img, settings.deviceType);
+        const w = baseW;
+        const h = w / aspect;
+
+        // Neat stack with slight offsets
+        const offset = (i - (numImages - 1) / 2) * spacing;
+        const x = centerX + offset - w / 2;
+        const y = centerY + offset * 0.3 - h / 2;
+
+        const { sx, sy, sWidth, sHeight } = getCropping(img, w, h, settings.imageFit);
+
+        renderData.push({
+            image: img,
+            id: img.dataset.id!,
+            x, y, width: w, height: h,
+            rotation: (i - (numImages - 1) / 2) * 5 + (settings.mockupAngle - 50) * 0.3,
+            sx, sy, sWidth, sHeight,
+            brightness: 1 - (i * 0.02),
+            _zIndex: i,
+        } as any);
+    }
+
+    return renderData;
+}
+
 export const calculateLayout = (
   images: HTMLImageElement[],
   canvasWidth: number,
@@ -1355,62 +2168,145 @@ export const calculateLayout = (
   const random = seededRandom(settings.seed);
   const imagesToProcess = [...imagesToUse].sort(() => random() - 0.5);
 
+  const canvasPadding = settings.canvasPadding || 0;
+  const effectiveWidth = canvasWidth - canvasPadding * 2;
+  const effectiveHeight = canvasHeight - canvasPadding * 2;
+
   let finalRenderData: ImageRenderData[];
 
   switch (settings.layout) {
     case LayoutType.Grid:
-      finalRenderData = calculateGridLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateGridLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Mosaic:
-      finalRenderData = calculateMosaicRowsLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateMosaicRowsLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Pile:
-      finalRenderData = calculatePileLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculatePileLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Wall3D:
-      finalRenderData = calculateWall3DLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateWall3DLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Tiled:
-      finalRenderData = calculateTiledLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateTiledLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Fractal:
-      finalRenderData = calculateFractalLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateFractalLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Voronoi:
-      finalRenderData = calculateVoronoiLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateVoronoiLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.CustomShape:
-      finalRenderData = calculateCustomShapeLayout(imagesToProcess, canvasWidth, canvasHeight, settings, shapeMaskData);
+      finalRenderData = calculateCustomShapeLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings, shapeMaskData);
       break;
     case LayoutType.TieredShape:
-      finalRenderData = calculateTieredShapeLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateTieredShapeLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Kaleidoscope:
-        finalRenderData = calculateKaleidoscopeLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+        finalRenderData = calculateKaleidoscopeLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
         break;
     case LayoutType.Journal:
-      finalRenderData = calculateJournalLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateJournalLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.GoldenSpiral:
-      finalRenderData = calculateGoldenSpiralLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateGoldenSpiralLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Circular:
-      finalRenderData = calculateCircularLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateCircularLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     case LayoutType.Orbital:
-      finalRenderData = calculateOrbitalLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateOrbitalLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.Showcase:
+      finalRenderData = calculateShowcaseLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.MockupWall:
+      finalRenderData = calculateMockupWallLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.IsometricGrid:
+      finalRenderData = calculateIsometricGridLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.StaggeredRows:
+      finalRenderData = calculateStaggeredRowsLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.FloatingCloud:
+      finalRenderData = calculateFloatingCloudLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.PerspectiveGrid:
+      finalRenderData = calculatePerspectiveGridLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.CoverFlow:
+      finalRenderData = calculateCoverFlowLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.Carousel:
+      finalRenderData = calculateCarouselLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.Floating:
+      finalRenderData = calculateFloatingLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.Freeform:
+      finalRenderData = calculateFreeformLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.MockupSpiral:
+      finalRenderData = calculateMockupSpiralLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.MockupDiagonal:
+      finalRenderData = calculateMockupDiagonalLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.MockupCascade:
+      finalRenderData = calculateMockupCascadeLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.MockupGrid3D:
+      finalRenderData = calculateMockupGrid3DLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
+      break;
+    case LayoutType.MockupStack:
+      finalRenderData = calculateMockupStackLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
     default:
-      finalRenderData = calculateGridLayout(imagesToProcess, canvasWidth, canvasHeight, settings);
+      finalRenderData = calculateGridLayout(imagesToProcess, effectiveWidth, effectiveHeight, settings);
       break;
   }
 
-  // Apply global rotation as a final step
-  if (settings.globalRotation !== 0) {
+  // Offset by padding
+  if (canvasPadding > 0) {
       finalRenderData.forEach(item => {
-          item.rotation += settings.globalRotation;
+          item.x += canvasPadding;
+          item.y += canvasPadding;
       });
   }
+
+  // Apply global rotation and pan as a final step
+  if (settings.globalRotation !== 0 || settings.globalOffsetX !== 0 || settings.globalOffsetY !== 0) {
+      finalRenderData.forEach(item => {
+          item.rotation += settings.globalRotation;
+          item.x += settings.globalOffsetX || 0;
+          item.y += settings.globalOffsetY || 0;
+      });
+  }
+
+  // Apply individual image overrides
+  finalRenderData.forEach(item => {
+      const override = settings.imageOverrides[item.id];
+      if (override) {
+          if (override.offsetX !== undefined) item.x += override.offsetX;
+          if (override.offsetY !== undefined) item.y += override.offsetY;
+          if (override.rotationOffset !== undefined) item.rotation += override.rotationOffset;
+          if (override.scaleMultiplier !== undefined) {
+              const oldW = item.width;
+              const oldH = item.height;
+              item.width *= override.scaleMultiplier;
+              item.height *= override.scaleMultiplier;
+              // Keep center
+              item.x -= (item.width - oldW) / 2;
+              item.y -= (item.height - oldH) / 2;
+          }
+          if (override.opacity !== undefined) item.opacity = override.opacity;
+          if (override.zIndex !== undefined) item.zIndex = override.zIndex;
+      }
+  });
+
+  // Sort by zIndex if present
+  finalRenderData.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
 
   return finalRenderData;
 };

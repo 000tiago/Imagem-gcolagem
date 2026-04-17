@@ -2,6 +2,7 @@
 import type { Settings, ImageRenderData, ImageFile } from '../types';
 import { LayoutType, BackgroundStyle, CardStyle } from '../types';
 import { COLOR_PALETTES } from '../constants';
+import { getCropping } from './layoutUtils';
 
 // A simple pseudorandom number generator for deterministic visuals based on a seed.
 const seededRandom = (seed: number) => {
@@ -191,6 +192,29 @@ const drawImageBackground = (ctx: CanvasRenderingContext2D, width: number, heigh
 }
 
 
+const drawTextOverlays = (ctx: CanvasRenderingContext2D, width: number, height: number, settings: Settings) => {
+    if (!settings.textOverlays || settings.textOverlays.length === 0) return;
+
+    settings.textOverlays.forEach(overlay => {
+        ctx.save();
+        ctx.translate(overlay.x * width, overlay.y * height);
+        ctx.rotate(overlay.rotation * (Math.PI / 180));
+        ctx.globalAlpha = overlay.opacity;
+        ctx.fillStyle = overlay.color;
+        // Use a safe font fallback
+        ctx.font = `${overlay.fontWeight} ${overlay.fontSize}px ${overlay.fontFamily}, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Add a subtle drop shadow for readability
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = overlay.fontSize / 10;
+        
+        ctx.fillText(overlay.text, 0, 0);
+        ctx.restore();
+    });
+};
+
 export const drawCollage = (
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -261,12 +285,49 @@ export const drawCollage = (
 
     ctx.save();
     
-    // Create a map for quick lookup of image file types
-    const isPngMap = new Map(imageFiles.map(f => [f.id, f.file.type === 'image/png']));
-    // Create a seeded random generator for deterministic background colors
-    const bgRandom = seededRandom(settings.bgSeed);
+    renderData.forEach(originalItem => {
+      const item = { ...originalItem }; // Shallow copy to allow modifying dimensions for tight framing
+      
+      // --- APPLY INDIVIDUAL OVERRIDES ---
+      const override = settings.imageOverrides?.[item.id];
+      if (override) {
+          item.rotation += override.rotationOffset || 0;
+          const scale = override.scaleMultiplier || 1;
+          item.width *= scale;
+          item.height *= scale;
+          item.x += override.offsetX || 0;
+          item.y += override.offsetY || 0;
+      }
 
-    renderData.forEach(item => {
+      // --- TIGHT FRAMING FOR 'CONTAIN' ---
+      // If proportional fit (contain) is enabled, shrink the card/frame to tightly wrap the image.
+      // This prevents large empty colored bands around non-square images (like wallpapers).
+      // We only do this for rectangular layouts (where item.clip is undefined).
+      if (settings.imageFit === 'contain' && item.image.naturalWidth > 0 && !item.clip) {
+          const padding = Math.max(0, settings.padding);
+          const availableWidth = Math.max(0, item.width - padding * 2);
+          const availableHeight = Math.max(0, item.height - padding * 2);
+          
+          if (availableWidth > 0 && availableHeight > 0) {
+              const imageAspect = item.image.naturalWidth / item.image.naturalHeight;
+              const availableAspect = availableWidth / availableHeight;
+              
+              let newAvailableWidth = availableWidth;
+              let newAvailableHeight = availableHeight;
+              
+              if (imageAspect > availableAspect) {
+                  // Image is wider, reduce height
+                  newAvailableHeight = availableWidth / imageAspect;
+              } else {
+                  // Image is taller, reduce width
+                  newAvailableWidth = availableHeight * imageAspect;
+              }
+              
+              item.width = newAvailableWidth + padding * 2;
+              item.height = newAvailableHeight + padding * 2;
+          }
+      }
+
       ctx.save();
       
       let itemBlur = item.blur ?? 0;
@@ -284,33 +345,53 @@ export const drawCollage = (
         ctx.filter = `blur(${itemBlur}px)`;
       }
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-      ctx.shadowBlur = settings.shadowBlur;
-      ctx.shadowOffsetX = settings.shadowBlur / 5;
-      ctx.shadowOffsetY = settings.shadowBlur / 2.5;
-
       ctx.translate(item.x + item.width / 2, item.y + item.height / 2);
       ctx.rotate(item.rotation * (Math.PI / 180));
       
       // Create a clipping path for the card shape (used for both image and effects)
       ctx.beginPath();
-      if (item.clip) {
+      if (item.clip && settings.cardStyle !== CardStyle.DeviceMockup) {
         item.clip(ctx);
       } else {
-         const cornerRadius = item.cornerRadius ?? settings.cornerRadius;
+         let cornerRadius = item.cornerRadius ?? settings.cornerRadius;
+         if (settings.cardStyle === CardStyle.DeviceMockup) {
+             const imageAspect = item.image.naturalWidth / item.image.naturalHeight;
+             let isLandscape = item.width > item.height;
+             if (settings.deviceType === 'laptop') isLandscape = true;
+             else if (settings.deviceType === 'phone') isLandscape = false;
+             else if ((settings.deviceType === 'auto' || settings.deviceType === 'original') && item.image.naturalWidth > 0) {
+                 isLandscape = imageAspect > 1.1;
+             }
+             
+             const isExplicitDevice = settings.deviceType === 'phone' || settings.deviceType === 'laptop';
+             cornerRadius = isLandscape ? item.width * 0.03 : item.width * 0.15;
+             
+             if (!isExplicitDevice) {
+                 cornerRadius = Math.min(item.width, item.height) * 0.05;
+             }
+         }
          // @ts-ignore
-         ctx.roundRect(-item.width/2, -item.height/2, item.width, item.height, cornerRadius);
+         ctx.roundRect(-item.width/2, -item.height/2, item.width, item.height, Math.max(0, cornerRadius));
       }
+
+      // --- Draw Shadow ---
+      if (settings.shadowBlur > 0) {
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+          ctx.shadowBlur = settings.shadowBlur;
+          ctx.shadowOffsetX = settings.shadowBlur / 5;
+          ctx.shadowOffsetY = settings.shadowBlur / 2.5;
+          ctx.fillStyle = 'white'; // Color doesn't matter, just need to fill to cast shadow
+          ctx.fill();
+          
+          // Reset shadow so it doesn't apply to inner elements
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+      }
+
       ctx.save(); // Save the clipping path state
       ctx.clip();
-
-      // --- Draw Pastel Background for PNGs ---
-      const originalId = item.id.split('::')[0];
-      const isPng = isPngMap.get(originalId);
-      if (settings.addPngBackground && isPng) {
-          ctx.fillStyle = `hsl(${bgRandom() * 360}, 70%, 85%)`;
-          ctx.fillRect(-item.width / 2, -item.height / 2, item.width, item.height);
-      }
 
       // --- Draw Card Style ---
       if (settings.cardStyle === CardStyle.Glass && blurredBgCanvas) {
@@ -324,8 +405,8 @@ export const drawCollage = (
           ctx.translate(item.x + item.width / 2, item.y + item.height / 2);
           ctx.rotate(item.rotation * (Math.PI / 180));
          
-          // Add semi-transparent overlay
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          // Add semi-transparent overlay based on reflection setting
+          ctx.fillStyle = `rgba(255, 255, 255, ${settings.mockupReflection * 0.3})`;
           ctx.fillRect(-item.width/2, -item.height/2, item.width, item.height);
 
       } else if (settings.cardStyle === CardStyle.Default && settings.imageBorder && settings.borderWidth > 0 && settings.layout !== LayoutType.Voronoi) {
@@ -343,9 +424,145 @@ export const drawCollage = (
 
       // --- Draw Image ---
       try {
-        const padding = Math.max(0, settings.padding);
-        const availableWidth = Math.max(0, item.width - padding * 2);
-        const availableHeight = Math.max(0, item.height - padding * 2);
+        let padding = Math.max(0, settings.padding);
+        let bezelWidth = 0;
+        let bottomBezel = 0;
+        let outerRadius = 0;
+        
+        if (settings.cardStyle === CardStyle.DeviceMockup) {
+            const imageAspect = item.image.naturalWidth / item.image.naturalHeight;
+            const itemAspect = item.width / item.height;
+            
+            // Determine if we should treat this as landscape or portrait based on deviceType or aspect ratio
+            let isLandscape = item.width > item.height;
+            if (settings.deviceType === 'laptop') isLandscape = true;
+            else if (settings.deviceType === 'phone') isLandscape = false;
+            else if ((settings.deviceType === 'auto' || settings.deviceType === 'original') && item.image.naturalWidth > 0) {
+                isLandscape = imageAspect > 1.1; // Slightly biased towards portrait for square-ish
+            }
+
+            const isExplicitDevice = settings.deviceType === 'phone' || settings.deviceType === 'laptop';
+
+            // Thinner, sleeker bezels
+            bezelWidth = isLandscape ? item.width * 0.02 : item.width * 0.035;
+            bottomBezel = (isLandscape && settings.deviceType === 'laptop') ? bezelWidth * 2.5 : bezelWidth;
+            outerRadius = isLandscape ? item.width * 0.03 : item.width * 0.15;
+            
+            // If original/auto and not explicit, use a more generic rounded corner
+            if (!isExplicitDevice) {
+                outerRadius = Math.min(item.width, item.height) * 0.05;
+            }
+            
+            padding += bezelWidth;
+            
+            // Draw outer casing (uses border color)
+            const casingColor = settings.mockupBezelColor || settings.borderColor || '#1a1a1a';
+            
+            // Premium Metallic gradient for casing - more complex for realism
+            const casingGrad = ctx.createLinearGradient(-item.width/2, -item.height/2, item.width/2, item.height/2);
+            casingGrad.addColorStop(0, casingColor);
+            casingGrad.addColorStop(0.15, '#ffffff');
+            casingGrad.addColorStop(0.3, casingColor);
+            casingGrad.addColorStop(0.5, '#ffffff');
+            casingGrad.addColorStop(0.7, casingColor);
+            casingGrad.addColorStop(0.85, '#ffffff');
+            casingGrad.addColorStop(1, casingColor);
+            
+            ctx.fillStyle = casingGrad;
+            ctx.beginPath();
+            // @ts-ignore
+            ctx.roundRect(-item.width / 2, -item.height / 2, item.width, item.height, outerRadius);
+            ctx.fill();
+
+            // Subtle outer glow/highlight on the edge
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // Inner black bezel (the "glass" part)
+            ctx.fillStyle = '#000000';
+            const glassBezelPadding = bezelWidth * 0.15;
+            const glassRadius = Math.max(0, outerRadius - glassBezelPadding);
+            ctx.beginPath();
+            // @ts-ignore
+            ctx.roundRect(
+                -item.width / 2 + glassBezelPadding, 
+                -item.height / 2 + glassBezelPadding, 
+                item.width - glassBezelPadding * 2, 
+                item.height - glassBezelPadding * 2, 
+                glassRadius
+            );
+            ctx.fill();
+            
+            // Draw physical buttons ONLY for explicit phone
+            if (!isLandscape && settings.deviceType === 'phone') {
+                ctx.fillStyle = casingColor; // Use solid color for buttons for better contrast
+                const btnW = bezelWidth * 0.15;
+                // Volume Up (Left)
+                ctx.beginPath();
+                // @ts-ignore
+                ctx.roundRect(-item.width/2 - btnW + 1, -item.height * 0.2, btnW, item.height * 0.08, btnW);
+                ctx.fill();
+                // Volume Down (Left)
+                ctx.beginPath();
+                // @ts-ignore
+                ctx.roundRect(-item.width/2 - btnW + 1, -item.height * 0.08, btnW, item.height * 0.08, btnW);
+                ctx.fill();
+                // Power (Right)
+                ctx.beginPath();
+                // @ts-ignore
+                ctx.roundRect(item.width/2 - 1, -item.height * 0.15, btnW, item.height * 0.12, btnW);
+                ctx.fill();
+            }
+            
+            // Draw inner black glass bezel (deeper black)
+            const casingThickness = bezelWidth * 0.2;
+            const innerGlassRadius = Math.max(0, outerRadius - casingThickness);
+            ctx.fillStyle = '#050505';
+            ctx.beginPath();
+            // @ts-ignore
+            ctx.roundRect(
+                -item.width / 2 + casingThickness, 
+                -item.height / 2 + casingThickness, 
+                item.width - casingThickness * 2, 
+                item.height - casingThickness * 2, 
+                innerGlassRadius
+            );
+            ctx.fill();
+            
+            ctx.save(); // Save state before inner clip
+            // Clip to inner screen
+            const screenCornerRadius = Math.max(0, outerRadius - bezelWidth);
+            ctx.beginPath();
+            // @ts-ignore
+            ctx.roundRect(
+                -item.width / 2 + bezelWidth, 
+                -item.height / 2 + bezelWidth, 
+                item.width - bezelWidth * 2, 
+                item.height - bezelWidth - bottomBezel, 
+                screenCornerRadius
+            );
+            ctx.clip(); // Inner clip
+
+            // --- Draw Inner Shadow for Screen Depth ---
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = bezelWidth * 0.5;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+            ctx.lineWidth = bezelWidth * 0.2;
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Reset shadow
+        }
+
+        // Adjust available space for the image. If bottomBezel is larger, we need to adjust height.
+        let availableWidth = Math.max(0, item.width - bezelWidth * 2);
+        let availableHeight = Math.max(0, item.height - bezelWidth - bottomBezel);
+        
+        if (settings.cardStyle !== CardStyle.DeviceMockup) {
+            availableWidth = Math.max(0, item.width - padding * 2);
+            availableHeight = Math.max(0, item.height - padding * 2);
+        }
 
         let imageDestWidth = availableWidth;
         let imageDestHeight = availableHeight;
@@ -366,20 +583,199 @@ export const drawCollage = (
         }
 
         if (imageDestWidth > 0 && imageDestHeight > 0) {
-            // The sx, sy, sWidth, sHeight from getCropping correctly define what part of the
-            // source image to use. For 'contain', it's the whole image. For 'cover', it's a cropped slice.
+            // Recalculate cropping based on the actual destination size to prevent stretching
+            const { sx, sy, sWidth, sHeight } = getCropping(item.image, imageDestWidth, imageDestHeight, settings.imageFit);
+            
+            let imgCenterY = 0;
+            if (settings.cardStyle === CardStyle.DeviceMockup) {
+                imgCenterY = (bezelWidth - bottomBezel) / 2;
+            }
+
+            ctx.save();
+            if (override) {
+                if (override.opacity !== undefined) ctx.globalAlpha *= override.opacity;
+                if (override.filters) {
+                    const f = override.filters;
+                    let filterStr = '';
+                    if (f.brightness !== undefined) filterStr += `brightness(${f.brightness}) `;
+                    if (f.contrast !== undefined) filterStr += `contrast(${f.contrast}) `;
+                    if (f.grayscale !== undefined) filterStr += `grayscale(${f.grayscale}) `;
+                    if (f.sepia !== undefined) filterStr += `sepia(${f.sepia}) `;
+                    if (f.saturate !== undefined) filterStr += `saturate(${f.saturate}) `;
+                    if (f.hueRotate !== undefined) filterStr += `hue-rotate(${f.hueRotate}deg) `;
+                    
+                    if (filterStr) {
+                        const currentFilter = ctx.filter;
+                        ctx.filter = (currentFilter === 'none' ? '' : currentFilter + ' ') + filterStr;
+                    }
+                }
+            }
+
             ctx.drawImage(item.image, 
-                item.sx, item.sy, item.sWidth, item.sHeight, 
-                -imageDestWidth / 2, -imageDestHeight / 2, 
+                sx, sy, sWidth, sHeight, 
+                -imageDestWidth / 2, -imageDestHeight / 2 + imgCenterY, 
                 imageDestWidth, imageDestHeight
             );
+            ctx.restore();
         }
+        
+        if (settings.cardStyle === CardStyle.DeviceMockup) {
+            const imageAspect = item.image.naturalWidth / item.image.naturalHeight;
+            let isLandscape = item.width > item.height;
+            if (settings.deviceType === 'laptop') isLandscape = true;
+            else if (settings.deviceType === 'phone') isLandscape = false;
+            else if (settings.deviceType === 'auto' && item.image.naturalWidth > 0) {
+                isLandscape = imageAspect > 1.1;
+            }
+            // outerRadius already defined above
+            
+            if (isLandscape) {
+                // Laptop Overlays
+                // Camera dot
+                ctx.fillStyle = '#0a0a0a';
+                ctx.beginPath();
+                ctx.arc(0, -item.height / 2 + bezelWidth / 2, bezelWidth * 0.25, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Camera lens reflection
+                ctx.fillStyle = '#1a1a2e';
+                ctx.beginPath();
+                ctx.arc(0, -item.height / 2 + bezelWidth / 2, bezelWidth * 0.1, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Green indicator light
+                ctx.fillStyle = 'rgba(74, 222, 128, 0.8)';
+                ctx.beginPath();
+                ctx.arc(bezelWidth * 0.8, -item.height / 2 + bezelWidth / 2, bezelWidth * 0.08, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Keyboard deck/hinge simulation
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(-item.width / 2, item.height / 2 - bottomBezel, item.width, bottomBezel);
+                
+                // Hinge indent
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(-item.width * 0.3, item.height / 2 - bottomBezel * 0.8, item.width * 0.6, bottomBezel * 0.2);
+                
+                // Screen glare (Laptop)
+                const glareGrad = ctx.createLinearGradient(-item.width/2, -item.height/2, item.width/2, item.height/2);
+                glareGrad.addColorStop(0, `rgba(255,255,255,${settings.mockupReflection * 0.5})`);
+                glareGrad.addColorStop(0.5, 'rgba(255,255,255,0)');
+                glareGrad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = glareGrad;
+                ctx.fillRect(-imageDestWidth / 2, -imageDestHeight / 2, imageDestWidth, imageDestHeight);
+                
+            } else {
+                // Phone Overlays (Dynamic Island)
+                const islandWidth = item.width * 0.28;
+                const islandHeight = item.width * 0.07;
+                const islandY = -item.height / 2 + bezelWidth + item.width * 0.015;
+                
+                // Island base
+                ctx.fillStyle = '#000000';
+                ctx.beginPath();
+                // @ts-ignore
+                ctx.roundRect(
+                    -islandWidth / 2,
+                    islandY,
+                    islandWidth,
+                    islandHeight,
+                    islandHeight / 2
+                );
+                ctx.fill();
+                
+                // Camera lens inside island
+                ctx.fillStyle = '#111111';
+                ctx.beginPath();
+                ctx.arc(islandWidth * 0.3, islandY + islandHeight / 2, islandHeight * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Lens reflection
+                ctx.fillStyle = '#2a2a3e';
+                ctx.beginPath();
+                ctx.arc(islandWidth * 0.3, islandY + islandHeight / 2, islandHeight * 0.15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // FaceID sensor
+                ctx.fillStyle = '#0a0a0a';
+                ctx.beginPath();
+                ctx.arc(-islandWidth * 0.2, islandY + islandHeight / 2, islandHeight * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Screen glare (Phone)
+                const glareGrad = ctx.createLinearGradient(-item.width/2, -item.height/2, item.width/2, item.height/2);
+                glareGrad.addColorStop(0, `rgba(255,255,255,${settings.mockupReflection * 0.4})`);
+                glareGrad.addColorStop(0.4, 'rgba(255,255,255,0)');
+                glareGrad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = glareGrad;
+                ctx.fillRect(-imageDestWidth / 2, -imageDestHeight / 2, imageDestWidth, imageDestHeight);
+                
+                // Inner screen shadow for depth
+                ctx.shadowColor = 'rgba(0,0,0,0.5)';
+                ctx.shadowBlur = item.width * 0.02;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = item.width * 0.01;
+                const innerRadius = item.width * 0.13;
+                ctx.beginPath();
+                // @ts-ignore
+                ctx.roundRect(
+                    -imageDestWidth / 2, 
+                    -imageDestHeight / 2, 
+                    imageDestWidth, 
+                    imageDestHeight, 
+                    innerRadius
+                );
+                ctx.stroke();
+                ctx.shadowColor = 'transparent'; // Reset shadow
+            }
+        }
+        
+        if (settings.cardStyle === CardStyle.DeviceMockup) {
+            ctx.restore(); // Restore to outer clip active, inner clip removed
+        }
+            
+            // Glass Glare / Reflection (Diagonal polygon)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.beginPath();
+            ctx.moveTo(-item.width / 2, -item.height / 2);
+            ctx.lineTo(0, -item.height / 2);
+            ctx.lineTo(-item.width / 2, item.height / 2);
+            ctx.fill();
+            
+            // Highlights
+            // Outer highlight
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = bezelWidth * 0.05;
+            ctx.beginPath();
+            ctx.roundRect(
+                -item.width / 2 + ctx.lineWidth/2, 
+                -item.height / 2 + ctx.lineWidth/2, 
+                item.width - ctx.lineWidth, 
+                item.height - ctx.lineWidth, 
+                Math.max(0, outerRadius - ctx.lineWidth/2)
+            );
+            ctx.stroke();
+
+            // Inner shadow
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = bezelWidth * 0.15;
+            ctx.beginPath();
+            ctx.roundRect(
+                -item.width / 2 + bezelWidth - ctx.lineWidth/2, 
+                -item.height / 2 + bezelWidth - ctx.lineWidth/2, 
+                item.width - bezelWidth * 2 + ctx.lineWidth, 
+                item.height - bezelWidth - bottomBezel + ctx.lineWidth, 
+                Math.max(0, outerRadius - bezelWidth + ctx.lineWidth/2)
+            );
+            ctx.stroke();
       } catch (e) {
           console.error("Error drawing image:", e);
       }
 
       // --- Draw Orbital Lighting Effect ---
-      if (item.brightness !== undefined && settings.orbitalLightIntensity > 0) {
+      if (item.brightness !== undefined && settings.autoLighting && settings.orbitalLightIntensity > 0 && settings.cardStyle !== CardStyle.DeviceMockup) {
         const lightEffect = (item.brightness - 0.5) * settings.orbitalLightIntensity * 2;
         if (lightEffect > 0) {
             ctx.fillStyle = `rgba(255, 255, 255, ${lightEffect})`;
@@ -396,15 +792,39 @@ export const drawCollage = (
         ctx.lineWidth = 1.5;
         const cornerRadius = item.cornerRadius ?? settings.cornerRadius;
         // @ts-ignore
-        ctx.roundRect(-item.width/2, -item.height/2, item.width, item.height, cornerRadius);
+        ctx.roundRect(-item.width/2, -item.height/2, item.width, item.height, Math.max(0, cornerRadius));
         ctx.stroke();
       }
 
-      ctx.restore(); // Restore from clipping
+      // --- Selection Indicator ---
+      if (focusedImageIds.includes(item.id)) {
+        ctx.strokeStyle = '#6366f1'; // indigo-500
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 5]);
+        const cornerRadius = item.cornerRadius ?? settings.cornerRadius;
+        ctx.beginPath();
+        // @ts-ignore
+        ctx.roundRect(-item.width/2 - 4, -item.height/2 - 4, item.width + 8, item.height + 8, Math.max(0, cornerRadius + 4));
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+        
+        // Draw small corner handles
+        ctx.fillStyle = '#6366f1';
+        const handleSize = 8;
+        ctx.fillRect(-item.width/2 - 8, -item.height/2 - 8, handleSize, handleSize);
+        ctx.fillRect(item.width/2, -item.height/2 - 8, handleSize, handleSize);
+        ctx.fillRect(-item.width/2 - 8, item.height/2, handleSize, handleSize);
+        ctx.fillRect(item.width/2, item.height/2, handleSize, handleSize);
+      }
+
+        if (settings.cardStyle === CardStyle.DeviceMockup) {
+            ctx.restore(); // Restore from inner clip
+        }
+      ctx.restore(); // Restore from outer clip
       ctx.restore(); // Restore from translation/rotation
     });
     
-    if (settings.vignette > 0) {
+    if (settings.vignette > 0 && settings.autoLighting) {
         ctx.save();
         const outerRadius = Math.sqrt(Math.pow(width / 2, 2) + Math.pow(height / 2, 2)) * 1.5;
         const gradient = ctx.createRadialGradient(width / 2, height / 2, width / 4, width / 2, height / 2, outerRadius);
@@ -415,6 +835,30 @@ export const drawCollage = (
         ctx.fillRect(0, 0, width, height);
         ctx.restore();
     }
+
+    // --- Apply Global Filters ---
+    if (settings.globalFilters) {
+        const filters = settings.globalFilters;
+        const filterStr = `brightness(${filters.brightness}) contrast(${filters.contrast}) saturate(${filters.saturate}) grayscale(${filters.grayscale}) sepia(${filters.sepia}) hue-rotate(${filters.hueRotate}deg)`;
+        
+        if (filterStr !== 'brightness(1) contrast(1) saturate(1) grayscale(0) sepia(0) hue-rotate(0deg)') {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (tempCtx) {
+                tempCtx.drawImage(ctx.canvas, 0, 0);
+                ctx.clearRect(0, 0, width, height);
+                ctx.save();
+                ctx.filter = filterStr;
+                ctx.drawImage(tempCanvas, 0, 0);
+                ctx.restore();
+            }
+        }
+    }
+
+    // --- Draw Text Overlays ---
+    drawTextOverlays(ctx, width, height, settings);
 
     ctx.restore();
 }

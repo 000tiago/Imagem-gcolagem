@@ -14,7 +14,25 @@ export enum LayoutType {
   Journal = 'Journal',
   Circular = 'Circular',
   Orbital = 'Orbital',
+  Showcase = 'Showcase',
+  Isometric = 'Isometric',
+  CoverFlow = 'CoverFlow',
+  Carousel = 'Carousel',
+  MockupWall = 'MockupWall',
+  IsometricGrid = 'IsometricGrid',
+  StaggeredRows = 'StaggeredRows',
+  FloatingCloud = 'FloatingCloud',
+  PerspectiveGrid = 'PerspectiveGrid',
+  Floating = 'Floating',
+  MockupSpiral = 'MockupSpiral',
+  MockupDiagonal = 'MockupDiagonal',
+  MockupCascade = 'MockupCascade',
+  MockupGrid3D = 'MockupGrid3D',
+  MockupStack = 'MockupStack',
+  Freeform = 'Freeform',
 }
+
+export type DeviceType = 'auto' | 'phone' | 'laptop' | 'original';
 
 export enum BackgroundStyle {
   Solid = 'Solid',
@@ -49,6 +67,7 @@ export enum TieredShape {
 export enum CardStyle {
     Default = 'Default',
     Glass = 'Glass',
+    DeviceMockup = 'DeviceMockup',
 }
 
 export enum CircularPattern {
@@ -65,6 +84,39 @@ export enum SpiralType {
 
 export type ImageFit = 'contain' | 'cover';
 export type ExportFormat = 'png' | 'jpeg' | 'webp';
+
+export interface TextOverlay {
+  id: string;
+  text: string;
+  x: number; // 0 to 1 (percentage of canvas)
+  y: number; // 0 to 1
+  fontSize: number; // base size
+  fontFamily: string;
+  color: string;
+  rotation: number;
+  opacity: number;
+  fontWeight: string;
+}
+
+export interface ImageFilters {
+  grayscale: number; // 0-1
+  sepia: number; // 0-1
+  brightness: number; // 0.5 - 1.5
+  contrast: number; // 0.5 - 1.5
+  hueRotate: number; // 0-360
+  saturate: number; // 0-2
+}
+
+export interface ImageOverride {
+  id: string;
+  rotationOffset?: number;
+  scaleMultiplier?: number;
+  offsetX?: number;
+  offsetY?: number;
+  opacity?: number;
+  zIndex?: number;
+  filters?: Partial<ImageFilters>;
+}
 
 export interface Settings {
   layout: LayoutType;
@@ -102,6 +154,12 @@ export interface Settings {
   borderColor: string;
   borderWidth: number;
   cardStyle: CardStyle;
+  deviceType: DeviceType;
+  mockupSpacing: number;
+  mockupAngle: number;
+  mockupBezelColor: string;
+  mockupReflection: number; // 0-1
+  canvasPadding: number; // 0 to 200
   // Focal Point
   focalPoint: boolean;
   focalPointBlur: number; // in pixels
@@ -142,6 +200,10 @@ export interface Settings {
   // Organic Variation
   organicVariation: number; // 0-1
   globalRotation: number; // -180 to 180
+  globalOffsetX: number;
+  globalOffsetY: number;
+  autoLighting: boolean;
+  lockImages: boolean;
   // 3D Wall (replaces Perspective)
   perspectiveAngle: number; // -45 to 45
   perspectiveTilt: number; // -45 to 45
@@ -157,9 +219,11 @@ export interface Settings {
   orbitalLightAngle: number; // 0 - 360
   orbitalLightIntensity: number; // 0 - 1
   orbitalDoF: number; // 0 - 20 (Depth of Field blur pixels)
-  // PNG Backgrounds
-  addPngBackground: boolean;
-  bgSeed: number;
+  // New Features
+  imageOverrides: Record<string, ImageOverride>;
+  textOverlays: TextOverlay[];
+  globalFilters: ImageFilters;
+  lowResPreview: boolean;
 }
 
 export interface ImageFile {
@@ -197,6 +261,8 @@ export interface ImageRenderData {
   // For Orbital lighting and DoF
   brightness?: number; // 0 (dark) to 1 (bright)
   blur?: number; // in pixels
+  zIndex?: number;
+  opacity?: number;
 }
 
 
